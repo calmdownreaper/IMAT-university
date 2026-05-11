@@ -220,6 +220,34 @@
       const colMax = Math.max(...colValues);
       const colRange = colMax - colMin || 1;
 
+      // Get ranking values for SCORE_Q calculation
+      const qsRepValues = rows.map(r => {
+        const idx = cols.indexOf('QS Reputação');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
+      });
+      const qsRankValues = rows.map(r => {
+        const idx = cols.indexOf('Rank QS (Med)');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 999;
+      });
+      const theRankValues = rows.map(r => {
+        const idx = cols.indexOf('Rank THE (Med)');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 999;
+      });
+      const censisValues = rows.map(r => {
+        const idx = cols.indexOf('Censis');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
+      });
+      const natureValues = rows.map(r => {
+        const idx = cols.indexOf('Nature Index');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
+      });
+
+      // Min-max normalize for ranking (lower = better, so invert)
+      const qsRankMin = Math.min(...qsRankValues);
+      const qsRankMax = Math.max(...qsRankValues);
+      const theRankMin = Math.min(...theRankValues);
+      const theRankMax = Math.max(...theRankValues);
+
       return rows.map((row, idx) => {
         const obj = {};
         cols.forEach((col, i) => {
@@ -242,14 +270,24 @@
           corteCalc = corte2023;
         }
 
-        return {
+        // Get normalized values for SCORE_Q calculation
+        const qsRepNorm = parseNumber(obj['QS Reputação'], 0);
+        const qsRankNorm = 100 - ((parseNumber(obj['Rank QS (Med)'], 999) - qsRankMin) / (qsRankMax - qsRankMin || 1)) * 100;
+        const theRankNorm = 100 - ((parseNumber(obj['Rank THE (Med)'], 999) - theRankMin) / (theRankMax - theRankMin || 1)) * 100;
+        const censisNorm = parseNumber(obj['Censis'], 0);
+        const natureNorm = parseNumber(obj['Nature Index'], 0);
+
+        // Calculate SCORE_Q: 0.35·QS_rep + 0.25·QS_rank + 0.20·THE_rank + 0.15·Censis + 0.05·Nature
+        const scoreQCalc = (0.35 * qsRepNorm + 0.25 * qsRankNorm + 0.20 * theRankNorm + 0.15 * censisNorm + 0.05 * natureNorm);
+
+        const data = {
           UNI: obj['Instituição'] || '',
-          Qs_rep_calc: parseNumber(obj['QS Reputação'], 0),
-          Censis_calc: parseNumber(obj['Censis'], 0),
-          Nat_index_calc: parseNumber(obj['Nature Index'], 0),
-          Qs_rank_calc: parseNumber(obj['Rank QS (Med)'], 0),
-          THE_rank_calc: parseNumber(obj['Rank THE (Med)'], 0),
-          SCORE_Q: parseNumber(obj['Score Qualidade'], 0),
+          Qs_rep_calc: qsRepNorm,
+          Censis_calc: censisNorm,
+          Nat_index_calc: natureNorm,
+          Qs_rank_calc: qsRankNorm,
+          THE_rank_calc: theRankNorm,
+          SCORE_Q: Math.round(scoreQCalc * 100) / 100,
           Corte_calc: Math.round(corteCalc * 100) / 100,
           COL_calc: Math.round(((colMax - colRaw) / colRange) * 100),
           QOL_calc: Math.round(((qolRaw - qolMin) / qolRange) * 100),
@@ -260,6 +298,12 @@
           Corte_2025: corte2025,
           Corte_2023: corte2023
         };
+
+        if (idx < 3) {
+          console.log(`Row ${idx}: ${data.UNI} | SCORE_Q=${data.SCORE_Q} | COL=${data.COL_calc} | QOL=${data.QOL_calc}`);
+        }
+
+        return data;
       });
     }
 
