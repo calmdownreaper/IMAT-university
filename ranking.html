@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IMAT University Selector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="ranking.css">
+</head>
+<body>
+  <header>
+    <h1>IMAT University Selector</h1>
+    <p class="subtitle">Ranked Italian medical universities for IMAT candidates</p>
+  </header>
+
+  <div class="container">
+    <table id="universityTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable('UNI')">University<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('SCORE_Q', true)" class="numeric">Quality Score<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('Corte_calc', true)" class="numeric">Entry Difficulty<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('COL_calc', true)" class="numeric">Cost of Living<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('QOL_calc', true)" class="numeric">Quality of Life<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('Non_EU_Seats', true)" class="numeric">Non-EU Seats<span class="sort-indicator"></span></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const DATA = [
+      { UNI: "Sapienza University of Rome", Qs_rep_calc: 100, Censis_calc: 32.05128205, Nat_index_calc: 82.01556739, Qs_rank_calc: 99.01408451, THE_rank_calc: 73.8028169, SCORE_Q: 83.42255518, Corte_calc: 68.7399679, COL_calc: 62.66666667, QOL_calc: 68.56872792, city_size: 2, Non_EU_Seats: 13, COL_raw: 61.3, QOL_raw: 549.24, Corte_2025: 65.8, Corte_2023: 50.8 },
+      { UNI: "University of Bologna", Qs_rep_calc: 54.17661098, Censis_calc: 71.79487179, Nat_index_calc: 59.7159634, Qs_rank_calc: 98.45070423, THE_rank_calc: 100, SCORE_Q: 77.32951884, Corte_calc: 91.37239165, COL_calc: 29.77777778, QOL_calc: 100, city_size: 1, Non_EU_Seats: 20, COL_raw: 68.7, QOL_raw: 612.42, Corte_2025: 70.3, Corte_2023: 59.1 },
+      { UNI: "University of Milan (Statale)", Qs_rep_calc: 56.32458234, Censis_calc: 60.25641026, Nat_index_calc: 50.86713096, Qs_rank_calc: 100, THE_rank_calc: 87.88732394, SCORE_Q: 73.87288669, Corte_calc: 100, COL_calc: 0, QOL_calc: 98.343366, city_size: 2, Non_EU_Seats: 15, COL_raw: 75.4, QOL_raw: 609.09, Corte_2025: 72.9, Corte_2023: 60.2 },
+      { UNI: "University of Padua", Qs_rep_calc: 44.86873508, Censis_calc: 61.53846154, Nat_index_calc: 100, Qs_rank_calc: 94.50704225, THE_rank_calc: 80.84507042, SCORE_Q: 69.73060116, Corte_calc: 66.05136437, COL_calc: 45.33333333, QOL_calc: 97.94040098, city_size: 1, Non_EU_Seats: 25, COL_raw: 65.2, QOL_raw: 608.28, Corte_2025: 65.4, Corte_2023: 49.5 },
+      { UNI: "University of Milano-Bicocca", Qs_rep_calc: 15.75178998, Censis_calc: 87.17948718, Nat_index_calc: 38.85019801, Qs_rank_calc: 77.46478873, THE_rank_calc: 63.38028169, SCORE_Q: 52.57481299, Corte_calc: 70.86677368, COL_calc: 0, QOL_calc: 98.343366, city_size: 2, Non_EU_Seats: 18, COL_raw: 75.4, QOL_raw: 609.09, Corte_2025: 65.1, Corte_2023: 54.2 },
+      { UNI: "University of Pavia", Qs_rep_calc: 11.69451074, Censis_calc: 100, Nat_index_calc: 20.6199645, Qs_rank_calc: 77.46478873, THE_rank_calc: 63.38028169, SCORE_Q: 52.1663305, Corte_calc: 91.97431782, COL_calc: 67.02222222, QOL_calc: 63.31525795, city_size: 0, Non_EU_Seats: 40, COL_raw: 60.32, QOL_raw: 538.68, Corte_2025: 73, Corte_2023: 53.3 },
+      { UNI: "University of Turin", Qs_rep_calc: 44.39140811, Censis_calc: 38.46153846, Nat_index_calc: 43.60234876, Qs_rank_calc: 70.42253521, THE_rank_calc: 49.29577465, SCORE_Q: 50.95112978, Corte_calc: 23.39486356, COL_calc: 59.55555556, QOL_calc: 63.12123775, city_size: 2, Non_EU_Seats: 32, COL_raw: 62, QOL_raw: 538.29, Corte_2025: null, Corte_2023: 50 },
+      { UNI: "University of Rome Tor Vergata", Qs_rep_calc: 24.34367542, Censis_calc: 29.48717949, Nat_index_calc: 20.45609723, Qs_rank_calc: 77.46478873, THE_rank_calc: 63.38028169, SCORE_Q: 46.0084217, Corte_calc: 81.13964687, COL_calc: 62.66666667, QOL_calc: 68.56872792, city_size: 2, Non_EU_Seats: 20, COL_raw: 61.3, QOL_raw: 549.24, Corte_2025: 69.1, Corte_2023: 53.4 },
+      { UNI: "University of Naples Federico II", Qs_rep_calc: 31.26491647, Censis_calc: 2.564102564, Nat_index_calc: 52.1780691, Qs_rank_calc: 77.46478873, THE_rank_calc: 63.38028169, SCORE_Q: 45.97849312, Corte_calc: 62.60032103, COL_calc: 69.33333333, QOL_calc: 0, city_size: 2, Non_EU_Seats: 45, COL_raw: 59.8, QOL_raw: 411.41, Corte_2025: 63.1, Corte_2023: 52 },
+      { UNI: "University of Catania", Qs_rep_calc: 4.295942721, Censis_calc: 20.51282051, Nat_index_calc: 1.802539943, Qs_rank_calc: 56.33802817, THE_rank_calc: 49.29577465, SCORE_Q: 28.614292, Corte_calc: 69.94382022, COL_calc: 100, QOL_calc: 18.49659221, city_size: 1, Non_EU_Seats: 60, COL_raw: 52.9, QOL_raw: 448.59, Corte_2025: 61.6, Corte_2023: null },
+      { UNI: "University of Parma", Qs_rep_calc: 6.443914081, Censis_calc: 48.71794872, Nat_index_calc: 21.43930083, Qs_rank_calc: 42.25352113, THE_rank_calc: 0, SCORE_Q: 21.19840756, Corte_calc: 72.95345104, COL_calc: 60.31111111, QOL_calc: 97.4180389, city_size: 1, Non_EU_Seats: 45, COL_raw: 61.83, QOL_raw: 607.23, Corte_2025: 67.6, Corte_2023: 50.1 },
+      { UNI: "University of Messina", Qs_rep_calc: 1.670644391, Censis_calc: 37.17948718, Nat_index_calc: 0.2594565069, Qs_rank_calc: 14.08450704, THE_rank_calc: 28.16901408, SCORE_Q: 15.32955102, Corte_calc: 30.65810594, COL_calc: 87.11111111, QOL_calc: 22.87448386, city_size: 1, Non_EU_Seats: 56, COL_raw: 55.8, QOL_raw: 457.39, Corte_2025: 58.2, Corte_2023: 36.9 },
+      { UNI: "University of Bari", Qs_rep_calc: 7.637231504, Censis_calc: 0, Nat_index_calc: 9.395056671, Qs_rank_calc: 42.25352113, THE_rank_calc: 0, SCORE_Q: 13.70616414, Corte_calc: 0, COL_calc: 83.11111111, QOL_calc: 55.64399781, city_size: 1, Non_EU_Seats: 11, COL_raw: 56.7, QOL_raw: 523.26, Corte_2025: 49.3, Corte_2023: 32.2 },
+      { UNI: "Marche (Ancona)", Qs_rep_calc: 0.477326969, Censis_calc: 34.61538462, Nat_index_calc: 0, Qs_rank_calc: 0, THE_rank_calc: 28.16901408, SCORE_Q: 10.99317495, Corte_calc: 38.00160514, COL_calc: 62.13333333, QOL_calc: 87.99562211, city_size: 0, Non_EU_Seats: 60, COL_raw: 61.42, QOL_raw: 588.29, Corte_2025: 58.2, Corte_2023: 43 },
+      { UNI: "University of Cagliari", Qs_rep_calc: 0, Censis_calc: 29.48717949, Nat_index_calc: 3.168100505, Qs_rank_calc: 14.08450704, THE_rank_calc: 0, SCORE_Q: 8.102608709, Corte_calc: 40.24879615, COL_calc: 52.88888889, QOL_calc: 77.83692354, city_size: 1, Non_EU_Seats: 20, COL_raw: 63.5, QOL_raw: 567.87, Corte_2025: 54.2, Corte_2023: null },
+      { UNI: "University of Campania (Vanvitelli)", Qs_rep_calc: 1.909307876, Censis_calc: 7.692307692, Nat_index_calc: 2.458009013, Qs_rank_calc: 21.12676056, THE_rank_calc: 0, SCORE_Q: 7.226694502, Corte_calc: 65.65008026, COL_calc: 69.33333333, QOL_calc: 2.746132033, city_size: 2, Non_EU_Seats: 50, COL_raw: 59.8, QOL_raw: 416.93, Corte_2025: 66.2, Corte_2023: 47.3 }
+    ];
+
+    let currentSort = { column: 'SCORE_Q', ascending: false };
+
+    function formatNumber(num) {
+      return typeof num === 'number' ? num.toFixed(1) : num;
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      data.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.onclick = () => toggleDetail(idx);
+
+        tr.innerHTML = `
+          <td class="uni-name">${row.UNI}</td>
+          <td class="numeric">${formatNumber(row.SCORE_Q)}</td>
+          <td class="numeric">${formatNumber(row.Corte_calc)}</td>
+          <td class="numeric">${formatNumber(row.COL_calc)}</td>
+          <td class="numeric">${formatNumber(row.QOL_calc)}</td>
+          <td class="numeric">${row.Non_EU_Seats}</td>
+        `;
+        tbody.appendChild(tr);
+
+        const detailRow = document.createElement('tr');
+        detailRow.className = 'expanded-row';
+        detailRow.id = `detail-${idx}`;
+
+        detailRow.innerHTML = `
+          <td colspan="6" class="detail-cell">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">QS Reputation</span>
+                <span class="detail-value">${formatNumber(row.Qs_rep_calc)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">QS Rank</span>
+                <span class="detail-value">${formatNumber(row.Qs_rank_calc)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">THE Rank</span>
+                <span class="detail-value">${formatNumber(row.THE_rank_calc)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Censis Score</span>
+                <span class="detail-value">${formatNumber(row.Censis_calc)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Nature Index</span>
+                <span class="detail-value">${formatNumber(row.Nat_index_calc)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Cost (€)</span>
+                <span class="detail-value">${formatNumber(row.COL_calc)} | ${row.COL_raw}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">QoL Index</span>
+                <span class="detail-value">${formatNumber(row.QOL_calc)} | ${row.QOL_raw}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Entry (2025/23)</span>
+                <span class="detail-value">${formatNumber(100 - row.Corte_calc)} | ${row.Corte_2025 || row.Corte_2023}${row.Corte_2025 && row.Corte_2023 ? '/' + row.Corte_2023 : ''}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Non-EU Seats</span>
+                <span class="detail-value">${row.Non_EU_Seats}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">City Size</span>
+                <span class="detail-value">${row.city_size === 0 ? 'Small' : row.city_size === 1 ? 'Medium' : 'Large'}</span>
+              </div>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(detailRow);
+      });
+
+      updateSortIndicators();
+    }
+
+    function toggleDetail(idx) {
+      const detail = document.getElementById(`detail-${idx}`);
+      detail.classList.toggle('show');
+    }
+
+    function sortTable(column, isNumeric = false) {
+      const ascending = currentSort.column === column ? !currentSort.ascending : false;
+
+      const sorted = [...DATA].sort((a, b) => {
+        const aVal = a[column];
+        const bVal = b[column];
+
+        if (isNumeric) {
+          return ascending ? aVal - bVal : bVal - aVal;
+        } else {
+          return ascending
+            ? String(aVal).localeCompare(String(bVal))
+            : String(bVal).localeCompare(String(aVal));
+        }
+      });
+
+      currentSort = { column, ascending };
+      renderTable(sorted);
+    }
+
+    function updateSortIndicators() {
+      document.querySelectorAll('th .sort-indicator').forEach((el, idx) => {
+        el.textContent = '';
+      });
+      document.querySelectorAll('th').forEach((el) => {
+        el.classList.remove('active');
+      });
+
+      const headers = document.querySelectorAll('th');
+      const columnMap = {
+        'UNI': 0,
+        'SCORE_Q': 1,
+        'Corte_calc': 2,
+        'COL_calc': 3,
+        'QOL_calc': 4,
+        'Non_EU_Seats': 5
+      };
+
+      const idx = columnMap[currentSort.column];
+      if (idx !== undefined) {
+        headers[idx].classList.add('active');
+        headers[idx].querySelector('.sort-indicator').textContent =
+          currentSort.ascending ? '↑' : '↓';
+      }
+    }
+
+    // Initial render
+    renderTable(DATA);
+  </script>
+</body>
+</html>
