@@ -22,7 +22,7 @@
           <th onclick="sortTable('UNI')">Universidade<span class="sort-indicator"></span></th>
           <th onclick="sortTable('SCORE_Q', true)" class="numeric">Qualidade<span class="sort-indicator"></span></th>
           <th onclick="sortTable('Corte_calc', true)" class="numeric">Nota de Corte<span class="sort-indicator"></span></th>
-          <th onclick="sortTable('COL_calc', true)" class="numeric">Custo (€)<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('COL_raw', true)" class="numeric">Custo (€)<span class="sort-indicator"></span></th>
           <th onclick="sortTable('QOL_calc', true)" class="numeric">Qualidade de Vida<span class="sort-indicator"></span></th>
           <th onclick="sortTable('Non_EU_Seats', true)" class="numeric">Vagas Non-EU<span class="sort-indicator"></span></th>
         </tr>
@@ -63,7 +63,19 @@
       return sorted.indexOf(value) + 1;
     }
 
-    function getCategory(rank, total = 16) {
+    function getCostRank(value, values) {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted.lastIndexOf(value) + 1;
+    }
+
+    function getCostCategory(rank) {
+      if (rank <= 4) return 'barato';
+      if (rank <= 8) return 'moderado';
+      if (rank <= 12) return 'caro';
+      return 'caríssimo';
+    }
+
+    function getCategory(rank) {
       if (rank <= 4) return 'Excelente';
       if (rank <= 9) return 'Bom';
       if (rank <= 13) return 'Regular';
@@ -87,7 +99,7 @@
           <td class="uni-name">${row.UNI}</td>
           <td class="numeric">${formatNumber(row.SCORE_Q)}</td>
           <td class="numeric">${formatNumber(row.Corte_calc)}</td>
-          <td class="numeric">${formatNumber(row.COL_calc)}</td>
+          <td class="numeric">${formatNumber(row.COL_raw)}</td>
           <td class="numeric">${formatNumber(row.QOL_calc)}</td>
           <td class="numeric">${row.Non_EU_Seats}</td>
         `;
@@ -97,12 +109,12 @@
         detailRow.className = 'expanded-row';
         detailRow.id = `detail-${idx}`;
 
-        const colRank = getRank(row.COL_raw, colRanks, true);
+        const colRank = getCostRank(row.COL_raw, colRanks);
         const qolRank = getRank(row.QOL_raw, qolRanks, true);
         const corteVal = row.Corte_2025 ?? row.Corte_2023;
         const corteRank = getRank(corteVal, corteRanks, false);
 
-        const colCategory = getCategory(colRank);
+        const colCategory = getCostCategory(colRank);
         const qolCategory = getCategory(qolRank);
 
         detailRow.innerHTML = `
@@ -110,7 +122,7 @@
             <div class="detail-grid">
               <div class="detail-item">
                 <span class="detail-label">Custo (€)</span>
-                <span class="detail-value">${colCategory} | #${colRank}</span>
+                <span class="detail-value">${row.COL_raw.toFixed(1)} | #${colRank} (${colCategory})</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Qualidade de Vida</span>
@@ -143,7 +155,12 @@
     }
 
     function sortTable(column, isNumeric = false) {
-      const ascending = currentSort.column === column ? !currentSort.ascending : false;
+      let ascending;
+      if (currentSort.column === column) {
+        ascending = !currentSort.ascending;
+      } else {
+        ascending = column === 'COL_raw';
+      }
 
       const sorted = [...DATA].sort((a, b) => {
         const aVal = a[column];
@@ -175,7 +192,7 @@
         'UNI': 0,
         'SCORE_Q': 1,
         'Corte_calc': 2,
-        'COL_calc': 3,
+        'COL_raw': 3,
         'QOL_calc': 4,
         'Non_EU_Seats': 5
       };
