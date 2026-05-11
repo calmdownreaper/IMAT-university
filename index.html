@@ -385,8 +385,10 @@
 
     function setupDragDrop() {
       const cards = document.querySelectorAll('.drag-card');
+      let touchTarget = null;
 
       cards.forEach(card => {
+        // Mouse drag events
         card.addEventListener('dragstart', (e) => {
           draggedElement = card;
           card.classList.add('dragging');
@@ -413,6 +415,42 @@
           if (card !== draggedElement) {
             swapCards(draggedElement, card);
           }
+        });
+
+        // Touch events
+        card.addEventListener('touchstart', (e) => {
+          touchTarget = card;
+          card.classList.add('dragging');
+        });
+
+        card.addEventListener('touchmove', (e) => {
+          if (!touchTarget) return;
+          e.preventDefault();
+
+          const touch = e.touches[0];
+          const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+          const targetCard = elem?.closest('.drag-card');
+
+          cards.forEach(c => c.classList.remove('drag-over'));
+          if (targetCard && targetCard !== touchTarget) {
+            targetCard.classList.add('drag-over');
+          }
+        });
+
+        card.addEventListener('touchend', (e) => {
+          if (!touchTarget) return;
+
+          const touch = e.changedTouches[0];
+          const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+          const targetCard = elem?.closest('.drag-card');
+
+          if (targetCard && targetCard !== touchTarget) {
+            swapCards(touchTarget, targetCard);
+          }
+
+          cards.forEach(c => c.classList.remove('drag-over'));
+          touchTarget.classList.remove('dragging');
+          touchTarget = null;
         });
       });
     }
@@ -472,11 +510,20 @@
       return sorted.lastIndexOf(value) + 1;
     }
 
-    function getCostCategory(rank) {
-      if (rank <= 4) return 'barato';
-      if (rank <= 8) return 'moderado';
-      if (rank <= 12) return 'caro';
-      return 'caríssimo';
+    function getCostCategory(row) {
+      const cost = Number(row.custoCalc);
+      if (!Number.isFinite(cost)) return 'caro';
+      if (cost >= 75) return 'caríssimo';
+      if (cost >= 60) return 'caro';
+      if (cost >= 40) return 'moderado';
+      return 'barato';
+    }
+
+    function getCostColor(category) {
+      if (category === 'caríssimo') return 'red';
+      if (category === 'caro') return 'orange';
+      if (category === 'moderado') return 'yellow';
+      return 'green';
     }
 
     function getCategory(rank) {
@@ -526,11 +573,11 @@
         const hasCorte = Number.isFinite(uni.notaCorte);
         const corteRank = hasCorte ? getRank(uni.notaCorte, corteRanks, false) : null;
 
-        const colCategory = getCostCategory(colRank);
+        const colCategory = getCostCategory(uni);
         const qolCategory = getCategory(qolRank);
         const scoreQCategory = getCategory(scoreQRank);
 
-        const colColor = getColorTier(colRank, colRanks.length);
+        const colColor = getCostColor(colCategory);
         const qolColor = getColorTier(qolRank, qolRanks.length);
         const scoreQColor = getColorTier(scoreQRank, scoreQRanks.length);
         const corteColor = hasCorte ? getColorTier(corteRank, corteRanks.length) : '';
