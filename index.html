@@ -123,6 +123,56 @@
       return parseNumber(normalized, null);
     }
 
+    function clampPercent(value) {
+      if (!Number.isFinite(value)) return 0;
+      return Math.max(0, Math.min(100, value));
+    }
+
+    function isValidUniName(value) {
+      if (typeof value !== 'string') return false;
+      const name = value.trim();
+      if (!name) return false;
+      if (/^[-—]+$/.test(name)) return false;
+      if (/^\d+[º°]?$/.test(name)) return false;
+      if (/^[\d\s.,]+$/.test(name)) return false;
+      return true;
+    }
+
+    function validateDatasetOrThrow(data, sourceLabel) {
+      if (!Array.isArray(data) || data.length < 10) {
+        throw new Error(`${sourceLabel}: dataset insuficiente`);
+      }
+
+      const seen = new Set();
+      data.forEach((row, idx) => {
+        if (!isValidUniName(row.UNI)) {
+          throw new Error(`${sourceLabel}: UNI inválida na linha ${idx + 1}`);
+        }
+
+        if (seen.has(row.UNI)) {
+          throw new Error(`${sourceLabel}: universidade duplicada (${row.UNI})`);
+        }
+        seen.add(row.UNI);
+
+        const boundedMetrics = ['SCORE_Q', 'COL_calc', 'QOL_calc', 'Corte_calc'];
+        boundedMetrics.forEach((metric) => {
+          if (!Number.isFinite(row[metric])) {
+            throw new Error(`${sourceLabel}: ${metric} inválido em ${row.UNI}`);
+          }
+          if (row[metric] < 0 || row[metric] > 100) {
+            throw new Error(`${sourceLabel}: ${metric} fora da faixa em ${row.UNI}`);
+          }
+        });
+
+        if (!Number.isFinite(row.COL_raw) || !Number.isFinite(row.QOL_raw)) {
+          throw new Error(`${sourceLabel}: raw metrics inválidos em ${row.UNI}`);
+        }
+        if (!Number.isFinite(row.Non_EU_Seats) || row.Non_EU_Seats < 0) {
+          throw new Error(`${sourceLabel}: Non_EU_Seats inválido em ${row.UNI}`);
+        }
+      });
+    }
+
     async function fetchCsv(url) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -184,10 +234,14 @@
 
     async function loadFromVisualizationAPI(url) {
       const response = await fetchCsv(url);
-      let text = response;
+      let text = response.trim();
 
-      // Remove Google's wrapper: /*O_o*/google.visualization.Query.setResponse({...});
-      text = text.replace(/\/\*O_o\*\//, '').replace(/google\.visualization\.Query\.setResponse\(/, '').replace(/\);?$/, '');
+      const wrappedMatch = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);?\s*$/);
+      if (wrappedMatch) {
+        text = wrappedMatch[1];
+      } else {
+        text = text.replace(/^\/\*O_o\*\/\s*/, '');
+      }
 
       const json = JSON.parse(text);
 
@@ -195,125 +249,110 @@
         throw new Error('Sheet API error: ' + (json.message || 'unknown'));
       }
 
-      const table = json.table;
-      const cols = table.cols.map(c => c.label);
+      const table = json.table || {};
+      const cols = (table.cols || []).map(c => c.label || c.id || '');
       const rows = table.rows || [];
+      const rowValues = rows.map(row => cols.map((_, i) => (row.c && row.c[i]) ? row.c[i].v : null));
+      const colIndex = Object.fromEntries(cols.map((col, i) => [col, i]));
 
       console.log('gviz cols:', cols);
-      console.log('gviz rows count:', rows.length);
+      console.log('gviz rows count:', rowValues.length);
 
-      // Normalize QOL values for min-max scaling (0-100)
-      const qolValues = rows.map(r => {
-        const idx = cols.indexOf('LAB24 QoL');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
-      });
-      const qolMin = Math.min(...qolValues);
-      const qolMax = Math.max(...qolValues);
-      const qolRange = qolMax - qolMin || 1;
+      const rawByUni = new Map();
+      if (colIndex['Instituição'] !== undefined) {
+        const idxUni = colIndex['Instituição'];
+        const idxSeats = colIndex['Non-EU Seats'];
+        const idxColRaw = colIndex['NUMBEO COL'];
+        const idxQolRaw = colIndex['LAB24 QoL'];
+        const idxC2025 = colIndex['Non-EU Cut-off (2025)'];
+        const idxC2023 = colIndex['Non-EU Cut-off (2023)'];
 
-      // Normalize COL values for min-max scaling (0-100)
-      const colValues = rows.map(r => {
-        const idx = cols.indexOf('NUMBEO COL');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
-      });
-      const colMin = Math.min(...colValues);
-      const colMax = Math.max(...colValues);
-      const colRange = colMax - colMin || 1;
+        rowValues.forEach((values) => {
+          const uni = values[idxUni];
+          if (!isValidUniName(uni)) return;
 
-      // Get ranking values for SCORE_Q calculation
-      const qsRepValues = rows.map(r => {
-        const idx = cols.indexOf('QS Reputação');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
-      });
-      const qsRankValues = rows.map(r => {
-        const idx = cols.indexOf('Rank QS (Med)');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 999;
-      });
-      const theRankValues = rows.map(r => {
-        const idx = cols.indexOf('Rank THE (Med)');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 999;
-      });
-      const censisValues = rows.map(r => {
-        const idx = cols.indexOf('Censis');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
-      });
-      const natureValues = rows.map(r => {
-        const idx = cols.indexOf('Nature Index');
-        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
-      });
-
-      // Min-max normalize for ranking (lower = better, so invert)
-      const qsRankMin = Math.min(...qsRankValues);
-      const qsRankMax = Math.max(...qsRankValues);
-      const theRankMin = Math.min(...theRankValues);
-      const theRankMax = Math.max(...theRankValues);
-
-      return rows.map((row, idx) => {
-        const obj = {};
-        cols.forEach((col, i) => {
-          obj[col] = row.c[i] ? row.c[i].v : null;
+          rawByUni.set(String(uni).trim(), {
+            Non_EU_Seats: Math.round(parseNumber(values[idxSeats], 0)),
+            COL_raw: parseNumber(values[idxColRaw], 0),
+            QOL_raw: parseNumber(values[idxQolRaw], 0),
+            Corte_2025: parseNullableNumber(values[idxC2025]),
+            Corte_2023: parseNullableNumber(values[idxC2023])
+          });
         });
+      }
 
-        // Map sheet columns to expected format
-        const qolRaw = parseNumber(obj['LAB24 QoL'], 0);
-        const colRaw = parseNumber(obj['NUMBEO COL'], 0);
-        const corte2025 = parseNullableNumber(obj['Non-EU Cut-off (2025)']);
-        const corte2023 = parseNullableNumber(obj['Non-EU Cut-off (2023)']);
+      let data = [];
 
-        // Calculate Corte_calc: 0.70*2025 + 0.30*2023
-        let corteCalc = 0;
-        if (corte2025 != null && corte2023 != null) {
-          corteCalc = 0.70 * corte2025 + 0.30 * corte2023;
-        } else if (corte2025 != null) {
-          corteCalc = corte2025;
-        } else if (corte2023 != null) {
-          corteCalc = corte2023;
+      // Case 1: already normalized schema from sheet
+      if (colIndex.UNI !== undefined && colIndex.Qs_rep_calc !== undefined) {
+        data = rowValues.map((values) => ({
+          UNI: values[colIndex.UNI] ? String(values[colIndex.UNI]).trim() : '',
+          Qs_rep_calc: clampPercent(parseNumber(values[colIndex.Qs_rep_calc], 0)),
+          Censis_calc: clampPercent(parseNumber(values[colIndex.Censis_calc], 0)),
+          Nat_index_calc: clampPercent(parseNumber(values[colIndex.Nat_index_calc], 0)),
+          Qs_rank_calc: clampPercent(parseNumber(values[colIndex.Qs_rank_calc], 0)),
+          THE_rank_calc: clampPercent(parseNumber(values[colIndex.THE_rank_calc], 0)),
+          SCORE_Q: clampPercent(parseNumber(values[colIndex.SCORE_Q], 0)),
+          Corte_calc: clampPercent(parseNumber(values[colIndex.Corte_calc], 0)),
+          COL_calc: clampPercent(parseNumber(values[colIndex.COL_calc], 0)),
+          QOL_calc: clampPercent(parseNumber(values[colIndex.QOL_calc], 0)),
+          city_size: Math.round(parseNumber(values[colIndex.city_size], 0)),
+          Non_EU_Seats: Math.round(parseNumber(values[colIndex.Non_EU_Seats], 0)),
+          COL_raw: parseNumber(values[colIndex.COL_raw], 0),
+          QOL_raw: parseNumber(values[colIndex.QOL_raw], 0),
+          Corte_2025: parseNullableNumber(values[colIndex.Corte_2025]),
+          Corte_2023: parseNullableNumber(values[colIndex.Corte_2023])
+        })).filter((row) => isValidUniName(row.UNI));
+      } else {
+        // Case 2: bifurcated sheet. Display rows (0-15) + header (16) + calc rows (18-33).
+        // Extract calc metrics from rows starting at index 18.
+        const calcStartIdx = rowValues.findIndex((v, idx) => idx >= 17 && isValidUniName(v[0]) && /^UNI$/i.test(v[0]));
+        const calcMetricIdx = calcStartIdx >= 0 ? calcStartIdx : 18;
+
+        if (calcMetricIdx < rowValues.length) {
+          // Build column index for calc block
+          const calcHeaderRow = rowValues[calcMetricIdx];
+          const calcColIndex = Object.fromEntries(
+            calcHeaderRow.map((col, i) => [col, i]).filter(([col]) => col)
+          );
+
+          // Extract calc rows (skip header row)
+          data = rowValues.slice(calcMetricIdx + 1).map((values) => {
+            const uni = values[calcColIndex.UNI] ? String(values[calcColIndex.UNI]).trim() : '';
+            if (!isValidUniName(uni)) return null;
+
+            const raw = rawByUni.get(uni) || {};
+
+            return {
+              UNI: uni,
+              Qs_rep_calc: clampPercent(parseNumber(values[calcColIndex.Qs_rep_calc], 0)),
+              Censis_calc: clampPercent(parseNumber(values[calcColIndex.Censis_calc], 0)),
+              Nat_index_calc: clampPercent(parseNumber(values[calcColIndex.Nat_index_calc], 0)),
+              Qs_rank_calc: clampPercent(parseNumber(values[calcColIndex.Qs_rank_calc], 0)),
+              THE_rank_calc: clampPercent(parseNumber(values[calcColIndex.THE_rank_calc], 0)),
+              SCORE_Q: clampPercent(parseNumber(values[calcColIndex.SCORE_Q], 0)),
+              Corte_calc: clampPercent(parseNumber(values[calcColIndex.Corte_calc], 0)),
+              COL_calc: clampPercent(parseNumber(values[calcColIndex.COL_calc], 0)),
+              QOL_calc: clampPercent(parseNumber(values[calcColIndex.QOL_calc], 0)),
+              city_size: Math.round(parseNumber(values[calcColIndex.city_size] ?? 0, 1)),
+              Non_EU_Seats: raw.Non_EU_Seats ?? 0,
+              COL_raw: raw.COL_raw ?? 0,
+              QOL_raw: raw.QOL_raw ?? 0,
+              Corte_2025: raw.Corte_2025 ?? null,
+              Corte_2023: raw.Corte_2023 ?? null
+            };
+          }).filter(Boolean);
         }
+      }
 
-        // Get normalized values for SCORE_Q calculation
-        const qsRepNorm = parseNumber(obj['QS Reputação'], 0);
-        const qsRankNorm = 100 - ((parseNumber(obj['Rank QS (Med)'], 999) - qsRankMin) / (qsRankMax - qsRankMin || 1)) * 100;
-        const theRankNorm = 100 - ((parseNumber(obj['Rank THE (Med)'], 999) - theRankMin) / (theRankMax - theRankMin || 1)) * 100;
-        const censisNorm = parseNumber(obj['Censis'], 0);
-        const natureNorm = parseNumber(obj['Nature Index'], 0);
-
-        // Calculate SCORE_Q: 0.35·QS_rep + 0.25·QS_rank + 0.20·THE_rank + 0.15·Censis + 0.05·Nature
-        const scoreQCalc = (0.35 * qsRepNorm + 0.25 * qsRankNorm + 0.20 * theRankNorm + 0.15 * censisNorm + 0.05 * natureNorm);
-
-        const data = {
-          UNI: obj['Instituição'] || '',
-          Qs_rep_calc: qsRepNorm,
-          Censis_calc: censisNorm,
-          Nat_index_calc: natureNorm,
-          Qs_rank_calc: qsRankNorm,
-          THE_rank_calc: theRankNorm,
-          SCORE_Q: Math.round(scoreQCalc * 100) / 100,
-          Corte_calc: Math.round(corteCalc * 100) / 100,
-          COL_calc: Math.round(((colMax - colRaw) / colRange) * 100),
-          QOL_calc: Math.round(((qolRaw - qolMin) / qolRange) * 100),
-          city_size: 1, // Default: no city size in sheet
-          Non_EU_Seats: Math.round(parseNumber(obj['Non-EU Seats'], 0)),
-          COL_raw: colRaw,
-          QOL_raw: qolRaw,
-          Corte_2025: corte2025,
-          Corte_2023: corte2023
-        };
-
-        if (idx < 3) {
-          console.log(`Row ${idx}: ${data.UNI} | SCORE_Q=${data.SCORE_Q} | COL=${data.COL_calc} | QOL=${data.QOL_calc}`);
-        }
-
-        return data;
-      }).filter(d => {
-        if (!d.UNI || d.UNI.trim().length === 0) return false;
-        const uni = d.UNI.trim();
-        // Skip if looks like a column name or system value (contains underscores, all caps, etc)
-        if (uni.includes('_') || /^[A-Z0-9\s\-\.]+$/.test(uni) && uni.length < 5) return false;
-        // Skip if numeric
-        if (!isNaN(parseFloat(uni))) return false;
-        // Keep only rows that look like university names (contain space or certain keywords)
-        return uni.includes(' ') || uni.includes('University') || uni.includes('of');
+      const dedup = new Map();
+      data.forEach((row) => {
+        if (!dedup.has(row.UNI)) dedup.set(row.UNI, row);
       });
+
+      data = Array.from(dedup.values());
+      validateDatasetOrThrow(data, 'gviz');
+      return data;
     }
 
     async function loadFromCSV(url) {
@@ -335,15 +374,15 @@
 
             const data = rows.map(row => ({
               UNI: row.UNI,
-              Qs_rep_calc: parseNumber(row.Qs_rep_calc, 0),
-              Censis_calc: parseNumber(row.Censis_calc, 0),
-              Nat_index_calc: parseNumber(row.Nat_index_calc, 0),
-              Qs_rank_calc: parseNumber(row.Qs_rank_calc, 0),
-              THE_rank_calc: parseNumber(row.THE_rank_calc, 0),
-              SCORE_Q: parseNumber(row.SCORE_Q, 0),
-              Corte_calc: parseNumber(row.Corte_calc, 0),
-              COL_calc: parseNumber(row.COL_calc, 0),
-              QOL_calc: parseNumber(row.QOL_calc, 0),
+              Qs_rep_calc: clampPercent(parseNumber(row.Qs_rep_calc, 0)),
+              Censis_calc: clampPercent(parseNumber(row.Censis_calc, 0)),
+              Nat_index_calc: clampPercent(parseNumber(row.Nat_index_calc, 0)),
+              Qs_rank_calc: clampPercent(parseNumber(row.Qs_rank_calc, 0)),
+              THE_rank_calc: clampPercent(parseNumber(row.THE_rank_calc, 0)),
+              SCORE_Q: clampPercent(parseNumber(row.SCORE_Q, 0)),
+              Corte_calc: clampPercent(parseNumber(row.Corte_calc, 0)),
+              COL_calc: clampPercent(parseNumber(row.COL_calc, 0)),
+              QOL_calc: clampPercent(parseNumber(row.QOL_calc, 0)),
               city_size: Math.round(parseNumber(row.city_size, 0)),
               Non_EU_Seats: Math.round(parseNumber(row.Non_EU_Seats, 0)),
               COL_raw: parseNumber(row.COL_raw, 0),
@@ -352,6 +391,7 @@
               Corte_2023: parseNullableNumber(row.Corte_2023)
             }));
 
+            validateDatasetOrThrow(data, 'csv');
             resolve(data);
           },
           error: (error) => reject(error)
@@ -504,7 +544,8 @@
         const qolRank = getRank(uni.QOL_raw, qolRanks, true);
         const scoreQRank = getRank(uni.SCORE_Q, scoreQRanks, true);
         const corteVal = uni.Corte_2025 ?? uni.Corte_2023;
-        const corteRank = getRank(corteVal, corteRanks, false);
+        const hasCorte = corteVal != null && Number.isFinite(corteVal);
+        const corteRank = hasCorte ? getRank(corteVal, corteRanks, false) : null;
 
         const colCategory = getCostCategory(colRank);
         const qolCategory = getCategory(qolRank);
@@ -513,7 +554,7 @@
         const colColor = getColorTier(colRank, colRanks.length);
         const qolColor = getColorTier(qolRank, qolRanks.length);
         const scoreQColor = getColorTier(scoreQRank, scoreQRanks.length);
-        const corteColor = getColorTier(corteRank, corteRanks.length);
+        const corteColor = hasCorte ? getColorTier(corteRank, corteRanks.length) : '';
 
         card.id = cardId;
         card.innerHTML = `
@@ -535,7 +576,7 @@
             </div>
             <div class="detail-item">
               <span class="detail-label">Nota de Corte</span>
-              <span class="detail-value ${corteColor}">${uni.Corte_2025 != null ? uni.Corte_2025 + ' (2025)' : ''}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' : ''}${uni.Corte_2023 != null ? uni.Corte_2023 + ' (2023)' : ''} | #${corteRank}</span>
+              <span class="detail-value ${corteColor}">${hasCorte ? `${uni.Corte_2025 != null ? uni.Corte_2025 + ' (2025)' : ''}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' : ''}${uni.Corte_2023 != null ? uni.Corte_2023 + ' (2023)' : ''} | #${corteRank}` : 'N/A'}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Vagas Non-EU</span>
