@@ -76,89 +76,196 @@
 
   <script>
     let DATA = [];
-    const SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRLsoslLjbFAFNm5KNj6RsQ9BS_kJ-H7uQoiatLK8kqiTwF7cRbNdO_KIv0lLcHZkxYYlFs1-ryF3e2/pub?output=csv';
-    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+    const SHEETS_API_URL = 'https://docs.google.com/spreadsheets/d/1X0wda4s0XcHJKwgHzAcJytlRZny-rCw1YKPrYwDBpZM/gviz/tq?tqx=out:json';
+    const LOCAL_CSV_URL = 'imat_uni.csv';
+    const FETCH_TIMEOUT_MS = 12000;
+
+    function normalizeCsvContent(csvText) {
+      const withoutBom = csvText.replace(/^\uFEFF/, '');
+      const lines = withoutBom.split(/\r?\n/);
+      const normalizedHeaderIndex = lines.findIndex(line => /^\s*UNI\s*,/i.test(line));
+
+      if (normalizedHeaderIndex > 0) {
+        return lines.slice(normalizedHeaderIndex).join('\n');
+      }
+
+      return withoutBom;
+    }
+
+    function parseNumber(value, fallback = 0) {
+      if (value == null) return fallback;
+
+      let normalized = String(value).trim();
+      if (!normalized || normalized === '-' || normalized === '—') return fallback;
+
+      normalized = normalized.replace(/\s/g, '');
+
+      if (normalized.includes(',') && normalized.includes('.')) {
+        if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+          normalized = normalized.replace(/\./g, '').replace(',', '.');
+        } else {
+          normalized = normalized.replace(/,/g, '');
+        }
+      } else if (normalized.includes(',')) {
+        normalized = normalized.replace(',', '.');
+      }
+
+      const parsed = Number.parseFloat(normalized);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function parseNullableNumber(value) {
+      if (value == null) return null;
+
+      const normalized = String(value).trim();
+      if (!normalized || normalized === '-' || normalized === '—') return null;
+
+      return parseNumber(normalized, null);
+    }
+
+    async function fetchCsv(url) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(url, {
+          cache: 'no-store',
+          redirect: 'follow',
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.text();
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
 
     async function loadDataFromSheets() {
-      let csv = null;
+      const sources = [
+        { label: 'Google Visualization API', url: SHEETS_API_URL, type: 'gviz' },
+        { label: 'local fallback', url: LOCAL_CSV_URL, type: 'csv' }
+      ];
 
-      try {
-        console.log('Fetching from:', SHEETS_CSV_URL);
-        const response = await fetch(SHEETS_CSV_URL);
-        console.log('Response status:', response.status);
+      let data = null;
+      let lastError = null;
 
-        if (response.ok) {
-          csv = await response.text();
-          console.log('CSV fetched directly, length:', csv.length);
-        }
-      } catch (error) {
-        console.warn('Direct fetch failed, trying CORS proxy:', error.message);
-      }
-
-      // Fallback to CORS proxy if direct fetch failed
-      if (!csv) {
+      for (const source of sources) {
         try {
-          console.log('Using CORS proxy...');
-          const proxyUrl = CORS_PROXY + encodeURIComponent(SHEETS_CSV_URL);
-          const response = await fetch(proxyUrl);
+          console.log(`Fetching from ${source.label}:`, source.url);
 
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+          if (source.type === 'gviz') {
+            data = await loadFromVisualizationAPI(source.url);
+          } else {
+            data = await loadFromCSV(source.url);
           }
 
-          csv = await response.text();
-          console.log('CSV fetched via proxy, length:', csv.length);
+          console.log(`Data loaded from ${source.label}, ${data.length} rows`);
+          break;
         } catch (error) {
-          console.error('CORS proxy fetch error:', error.message);
-          alert('Erro ao buscar dados: ' + error.message);
-          return;
+          lastError = error;
+          console.warn(`Failed source ${source.label}:`, error.message);
         }
       }
 
-      // Parse CSV
-      try {
+      if (!data || data.length === 0) {
+        const detail = lastError ? ` (${lastError.message})` : '';
+        alert(`Erro ao buscar dados${detail}`);
+        return;
+      }
 
-        Papa.parse(csv, {
+      DATA = data;
+      console.log('DATA loaded:', DATA.length, 'universities');
+      init();
+    }
+
+    async function loadFromVisualizationAPI(url) {
+      const response = await fetchCsv(url);
+      let text = response;
+
+      // Remove Google's wrapper: /*O_o*/google.visualization.Query.setResponse({...});
+      text = text.replace(/\/\*O_o\*\//, '').replace(/google\.visualization\.Query\.setResponse\(/, '').replace(/\);?$/, '');
+
+      const json = JSON.parse(text);
+
+      if (json.status !== 'ok') {
+        throw new Error('Sheet API error: ' + (json.message || 'unknown'));
+      }
+
+      const table = json.table;
+      const cols = table.cols.map(c => c.label);
+      const rows = table.rows || [];
+
+      return rows.map(row => {
+        const obj = {};
+        cols.forEach((col, i) => {
+          obj[col] = row.c[i] ? row.c[i].v : null;
+        });
+        return {
+          UNI: obj.UNI || '',
+          Qs_rep_calc: parseNumber(obj.Qs_rep_calc, 0),
+          Censis_calc: parseNumber(obj.Censis_calc, 0),
+          Nat_index_calc: parseNumber(obj.Nat_index_calc, 0),
+          Qs_rank_calc: parseNumber(obj.Qs_rank_calc, 0),
+          THE_rank_calc: parseNumber(obj.THE_rank_calc, 0),
+          SCORE_Q: parseNumber(obj.SCORE_Q, 0),
+          Corte_calc: parseNumber(obj.Corte_calc, 0),
+          COL_calc: parseNumber(obj.COL_calc, 0),
+          QOL_calc: parseNumber(obj.QOL_calc, 0),
+          city_size: Math.round(parseNumber(obj.city_size, 0)),
+          Non_EU_Seats: Math.round(parseNumber(obj.Non_EU_Seats, 0)),
+          COL_raw: parseNumber(obj.COL_raw, 0),
+          QOL_raw: parseNumber(obj.QOL_raw, 0),
+          Corte_2025: parseNullableNumber(obj.Corte_2025),
+          Corte_2023: parseNullableNumber(obj.Corte_2023)
+        };
+      });
+    }
+
+    async function loadFromCSV(url) {
+      const csv = await fetchCsv(url);
+      const normalizedCsv = normalizeCsvContent(csv);
+
+      return new Promise((resolve, reject) => {
+        Papa.parse(normalizedCsv, {
           header: true,
-          skipEmptyLines: true,
+          skipEmptyLines: 'greedy',
+          transform: (value) => typeof value === 'string' ? value.trim() : value,
           complete: (results) => {
-            console.log('Parsed rows:', results.data.length);
+            const rows = results.data.filter(row => row.UNI && String(row.UNI).trim() !== '');
 
-            if (results.data.length === 0) {
-              throw new Error('Planilha vazia');
+            if (rows.length === 0) {
+              reject(new Error('planilha vazia'));
+              return;
             }
 
-            DATA = results.data.map(row => ({
+            const data = rows.map(row => ({
               UNI: row.UNI,
-              Qs_rep_calc: parseFloat(row.Qs_rep_calc) || 0,
-              Censis_calc: parseFloat(row.Censis_calc) || 0,
-              Nat_index_calc: parseFloat(row.Nat_index_calc) || 0,
-              Qs_rank_calc: parseFloat(row.Qs_rank_calc) || 0,
-              THE_rank_calc: parseFloat(row.THE_rank_calc) || 0,
-              SCORE_Q: parseFloat(row.SCORE_Q) || 0,
-              Corte_calc: parseFloat(row.Corte_calc) || 0,
-              COL_calc: parseFloat(row.COL_calc) || 0,
-              QOL_calc: parseFloat(row.QOL_calc) || 0,
-              city_size: parseInt(row.city_size) || 0,
-              Non_EU_Seats: parseInt(row.Non_EU_Seats) || 0,
-              COL_raw: parseFloat(row.COL_raw) || 0,
-              QOL_raw: parseFloat(row.QOL_raw) || 0,
-              Corte_2025: row.Corte_2025 ? parseFloat(row.Corte_2025) : null,
-              Corte_2023: row.Corte_2023 ? parseFloat(row.Corte_2023) : null
+              Qs_rep_calc: parseNumber(row.Qs_rep_calc, 0),
+              Censis_calc: parseNumber(row.Censis_calc, 0),
+              Nat_index_calc: parseNumber(row.Nat_index_calc, 0),
+              Qs_rank_calc: parseNumber(row.Qs_rank_calc, 0),
+              THE_rank_calc: parseNumber(row.THE_rank_calc, 0),
+              SCORE_Q: parseNumber(row.SCORE_Q, 0),
+              Corte_calc: parseNumber(row.Corte_calc, 0),
+              COL_calc: parseNumber(row.COL_calc, 0),
+              QOL_calc: parseNumber(row.QOL_calc, 0),
+              city_size: Math.round(parseNumber(row.city_size, 0)),
+              Non_EU_Seats: Math.round(parseNumber(row.Non_EU_Seats, 0)),
+              COL_raw: parseNumber(row.COL_raw, 0),
+              QOL_raw: parseNumber(row.QOL_raw, 0),
+              Corte_2025: parseNullableNumber(row.Corte_2025),
+              Corte_2023: parseNullableNumber(row.Corte_2023)
             }));
 
-            console.log('DATA loaded:', DATA.length, 'universities');
-            init();
+            resolve(data);
           },
-          error: (error) => {
-            console.error('CSV parse error:', error);
-            alert('Erro ao carregar dados: ' + error.message);
-          }
+          error: (error) => reject(error)
         });
-      } catch (error) {
-        console.error('Fetch error:', error.message);
-        alert('Erro ao buscar dados: ' + error.message);
-      }
+      });
     }
 
     const WEIGHTS = [0.40, 0.30, 0.20, 0.10];
