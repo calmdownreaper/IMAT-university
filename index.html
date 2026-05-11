@@ -271,12 +271,19 @@
           const uni = values[idxUni];
           if (!isValidUniName(uni)) return;
 
+          let corte2025 = parseNullableNumber(values[idxC2025]);
+          let corte2023 = parseNullableNumber(values[idxC2023]);
+
+          // Null coalescing: if 2025 null, use 2023; if 2023 null, use 2025
+          corte2025 = corte2025 ?? corte2023;
+          corte2023 = corte2023 ?? corte2025;
+
           rawByUni.set(String(uni).trim(), {
             Non_EU_Seats: Math.round(parseNumber(values[idxSeats], 0)),
             COL_raw: parseNumber(values[idxColRaw], 0),
             QOL_raw: parseNumber(values[idxQolRaw], 0),
-            Corte_2025: parseNullableNumber(values[idxC2025]),
-            Corte_2023: parseNullableNumber(values[idxC2023])
+            Corte_2025: corte2025,
+            Corte_2023: corte2023
           });
         });
       }
@@ -323,6 +330,12 @@
 
             const raw = rawByUni.get(uni) || {};
 
+            let corte2025 = raw.Corte_2025 ?? null;
+            let corte2023 = raw.Corte_2023 ?? null;
+            // Null coalescing for cut-offs
+            corte2025 = corte2025 ?? corte2023;
+            corte2023 = corte2023 ?? corte2025;
+
             return {
               UNI: uni,
               Qs_rep_calc: clampPercent(parseNumber(values[calcColIndex.Qs_rep_calc], 0)),
@@ -338,8 +351,8 @@
               Non_EU_Seats: raw.Non_EU_Seats ?? 0,
               COL_raw: raw.COL_raw ?? 0,
               QOL_raw: raw.QOL_raw ?? 0,
-              Corte_2025: raw.Corte_2025 ?? null,
-              Corte_2023: raw.Corte_2023 ?? null
+              Corte_2025: corte2025,
+              Corte_2023: corte2023
             };
           }).filter(Boolean);
         }
