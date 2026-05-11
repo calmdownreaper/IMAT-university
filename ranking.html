@@ -68,11 +68,27 @@
       return sorted.lastIndexOf(value) + 1;
     }
 
-    function getCostCategory(rank) {
-      if (rank <= 4) return 'barato';
-      if (rank <= 8) return 'moderado';
-      if (rank <= 12) return 'caro';
-      return 'caríssimo';
+    function getCostCategory(row) {
+      const cost = Number(row.COL_raw);
+      if (!Number.isFinite(cost)) return 'caro';
+      if (cost >= 75) return 'caríssimo';
+      if (cost >= 60) return 'caro';
+      if (cost >= 40) return 'moderado';
+      return 'barato';
+    }
+
+    function getCostColor(category) {
+      if (category === 'caríssimo') return 'red';
+      if (category === 'caro') return 'orange';
+      if (category === 'moderado') return 'yellow';
+      return 'green';
+    }
+
+    function getColorTier(rank, total) {
+      const percentile = (rank - 1) / total;
+      if (percentile < 0.33) return 'green';
+      if (percentile < 0.67) return 'yellow';
+      return 'red';
     }
 
     function getCategory(rank) {
@@ -114,23 +130,26 @@
         const corteVal = row.Corte_2025 ?? row.Corte_2023;
         const corteRank = getRank(corteVal, corteRanks, false);
 
-        const colCategory = getCostCategory(colRank);
+        const colCategory = getCostCategory(row);
         const qolCategory = getCategory(qolRank);
+        const colColor = getCostColor(colCategory);
+        const qolColor = getColorTier(qolRank, qolRanks.length);
+        const corteColor = getColorTier(corteRank, corteRanks.length);
 
         detailRow.innerHTML = `
           <td colspan="6" class="detail-cell">
             <div class="detail-grid">
               <div class="detail-item">
                 <span class="detail-label">Custo (€)</span>
-                <span class="detail-value">${row.COL_raw.toFixed(1)} | #${colRank} (${colCategory})</span>
+                <span class="detail-value ${colColor}">${row.COL_raw.toFixed(1)} | #${colRank} (${colCategory})</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Qualidade de Vida</span>
-                <span class="detail-value">${qolCategory} | #${qolRank}</span>
+                <span class="detail-value ${qolColor}">${qolCategory} | #${qolRank}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Nota de Corte</span>
-                <span class="detail-value">${row.Corte_2025 != null ? row.Corte_2025 + ' (2025)' : ''}${row.Corte_2025 != null && row.Corte_2023 != null ? ' / ' : ''}${row.Corte_2023 != null ? row.Corte_2023 + ' (2023)' : ''} | #${corteRank}</span>
+                <span class="detail-value ${corteColor}">${row.Corte_2025 != null ? row.Corte_2025 + ' (2025)' : ''}${row.Corte_2025 != null && row.Corte_2023 != null ? ' / ' : ''}${row.Corte_2023 != null ? row.Corte_2023 + ' (2023)' : ''} | #${corteRank}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Vagas Non-EU</span>
@@ -151,7 +170,15 @@
 
     function toggleDetail(idx) {
       const detail = document.getElementById(`detail-${idx}`);
-      detail.classList.toggle('show');
+      const willOpen = !detail.classList.contains('show');
+
+      document.querySelectorAll('.expanded-row.show').forEach((row) => {
+        if (row !== detail) {
+          row.classList.remove('show');
+        }
+      });
+
+      detail.classList.toggle('show', willOpen);
     }
 
     function sortTable(column, isNumeric = false) {

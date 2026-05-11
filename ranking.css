@@ -164,17 +164,14 @@ th.active .sort-indicator {
 
 /* ─── Expanded detail row ──────────────────────────────────── */
 .expanded-row {
-  display: none;
-}
-
-.expanded-row.show {
   display: table-row;
 }
 
 .detail-cell {
   padding: 0;
   background: #090909;
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid transparent;
+  border-bottom: 0;
 }
 
 .detail-grid {
@@ -182,6 +179,39 @@ th.active .sort-indicator {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1px;
   background: var(--line);
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-6px) scaleY(0.985);
+  transform-origin: top center;
+  pointer-events: none;
+  transition:
+    max-height 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 380ms ease-out,
+    transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.expanded-row.show .detail-cell {
+  border-left-color: var(--accent);
+}
+
+.expanded-row.show .detail-grid {
+  max-height: 420px;
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+  pointer-events: auto;
+}
+
+/* CSS-only accordion visual: se houver mais de um .show, apenas o último fica aberto */
+.expanded-row.show:has(~ .expanded-row.show) .detail-cell {
+  border-left-color: transparent;
+}
+
+.expanded-row.show:has(~ .expanded-row.show) .detail-grid {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px) scaleY(0.985);
+  pointer-events: none;
 }
 
 .detail-item {
@@ -195,7 +225,7 @@ th.active .sort-indicator {
 }
 
 .detail-label {
-  color: var(--sub);
+  color: var(--text);
   font-family: var(--mono);
   font-size: 9px;
   text-transform: uppercase;
@@ -204,11 +234,27 @@ th.active .sort-indicator {
 }
 
 .detail-value {
-  color: var(--accent);
+  color: var(--text);
   font-family: var(--mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.detail-value.green {
+  color: #8bd18b;
+}
+
+.detail-value.yellow {
+  color: #e3d06c;
+}
+
+.detail-value.orange {
+  color: #f2a65a;
+}
+
+.detail-value.red {
+  color: #ff6b6b;
 }
 
 @media (max-width: 720px) {
