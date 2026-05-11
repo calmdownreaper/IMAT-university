@@ -196,8 +196,8 @@
 
     async function loadDataFromSheets() {
       const sources = [
-        { label: 'Google Visualization API', url: SHEETS_API_URL, type: 'gviz' },
-        { label: 'local fallback', url: LOCAL_CSV_URL, type: 'csv' }
+        { label: 'local CSV', url: LOCAL_CSV_URL, type: 'csv' },
+        { label: 'Google Visualization API', url: SHEETS_API_URL, type: 'gviz' }
       ];
 
       let data = null;
@@ -267,7 +267,7 @@
         const idxC2025 = colIndex['Non-EU Cut-off (2025)'];
         const idxC2023 = colIndex['Non-EU Cut-off (2023)'];
 
-        rowValues.forEach((values) => {
+        rowValues.forEach((values, idx) => {
           const uni = values[idxUni];
           if (!isValidUniName(uni)) return;
 
@@ -378,31 +378,52 @@
           skipEmptyLines: 'greedy',
           transform: (value) => typeof value === 'string' ? value.trim() : value,
           complete: (results) => {
-            const rows = results.data.filter(row => row.UNI && String(row.UNI).trim() !== '');
+            // CSV has two sections: raw data (Instituição) + calc data (UNI, Qs_rep_calc)
+            // Collect raw data from first section
+            const rawByName = new Map();
+            results.data.forEach(row => {
+              if (row.Instituição && String(row.Instituição).trim()) {
+                rawByName.set(String(row.Instituição).trim(), {
+                  Non_EU_Seats: Math.round(parseNumber(row['Non-EU Seats'], 0)),
+                  COL_raw: parseNumber(row['NUMBEO COL'], 0),
+                  QOL_raw: parseNumber(row['LAB24 QoL'], 0),
+                  Corte_2025: parseNullableNumber(row['Non-EU Cut-off (2025)']),
+                  Corte_2023: parseNullableNumber(row['Non-EU Cut-off (2023)'])
+                });
+              }
+            });
 
-            if (rows.length === 0) {
+            // Collect calc data from second section
+            const calcRows = results.data.filter(row => row.UNI && String(row.UNI).trim() && row.Qs_rep_calc);
+
+            if (calcRows.length === 0) {
               reject(new Error('planilha vazia'));
               return;
             }
 
-            const data = rows.map(row => ({
-              UNI: row.UNI,
-              Qs_rep_calc: clampPercent(parseNumber(row.Qs_rep_calc, 0)),
-              Censis_calc: clampPercent(parseNumber(row.Censis_calc, 0)),
-              Nat_index_calc: clampPercent(parseNumber(row.Nat_index_calc, 0)),
-              Qs_rank_calc: clampPercent(parseNumber(row.Qs_rank_calc, 0)),
-              THE_rank_calc: clampPercent(parseNumber(row.THE_rank_calc, 0)),
-              SCORE_Q: clampPercent(parseNumber(row.SCORE_Q, 0)),
-              Corte_calc: clampPercent(parseNumber(row.Corte_calc, 0)),
-              COL_calc: clampPercent(parseNumber(row.COL_calc, 0)),
-              QOL_calc: clampPercent(parseNumber(row.QOL_calc, 0)),
-              city_size: Math.round(parseNumber(row.city_size, 0)),
-              Non_EU_Seats: Math.round(parseNumber(row.Non_EU_Seats, 0)),
-              COL_raw: parseNumber(row.COL_raw, 0),
-              QOL_raw: parseNumber(row.QOL_raw, 0),
-              Corte_2025: parseNullableNumber(row.Corte_2025),
-              Corte_2023: parseNullableNumber(row.Corte_2023)
-            }));
+            const data = calcRows.map(row => {
+              const uni = String(row.UNI).trim();
+              const raw = rawByName.get(uni) || {};
+
+              return {
+                UNI: uni,
+                Qs_rep_calc: clampPercent(parseNumber(row.Qs_rep_calc, 0)),
+                Censis_calc: clampPercent(parseNumber(row.Censis_calc, 0)),
+                Nat_index_calc: clampPercent(parseNumber(row.Nat_index_calc, 0)),
+                Qs_rank_calc: clampPercent(parseNumber(row.Qs_rank_calc, 0)),
+                THE_rank_calc: clampPercent(parseNumber(row.THE_rank_calc, 0)),
+                SCORE_Q: clampPercent(parseNumber(row.SCORE_Q, 0)),
+                Corte_calc: clampPercent(parseNumber(row.Corte_calc, 0)),
+                COL_calc: clampPercent(parseNumber(row.COL_calc, 0)),
+                QOL_calc: clampPercent(parseNumber(row.QOL_calc, 0)),
+                city_size: Math.round(parseNumber(row.city_size, 0)),
+                Non_EU_Seats: raw.Non_EU_Seats ?? 0,
+                COL_raw: raw.COL_raw ?? 0,
+                QOL_raw: raw.QOL_raw ?? 0,
+                Corte_2025: raw.Corte_2025 ?? null,
+                Corte_2023: raw.Corte_2023 ?? null
+              };
+            });
 
             validateDatasetOrThrow(data, 'csv');
             resolve(data);
