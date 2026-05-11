@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IMAT University Selector</title>
+  <title>Seletor de Universidades IMAT</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
@@ -11,8 +11,8 @@
 </head>
 <body>
   <header>
-    <h1>IMAT University Selector</h1>
-    <p class="subtitle">Find your best match</p>
+    <h1>Seletor de Universidades IMAT</h1>
+    <p class="subtitle">Encontre sua melhor opção</p>
   </header>
 
   <div class="container">
@@ -20,29 +20,29 @@
     <div id="selectorView" class="view active">
       <div class="selector-content">
         <div class="instruction">
-          Drag the cards to set your priorities. Position determines weight: 1st = 40%, 2nd = 30%, 3rd = 20%, 4th = 10%
+          Arraste os cartões para definir suas prioridades. Posição determina peso: 1º = 40%, 2º = 30%, 3º = 20%, 4º = 10%
         </div>
 
         <div id="dragContainer">
           <div class="drag-card" draggable="true" data-key="SCORE_Q">
             <div class="position-badge hidden" id="badge-SCORE_Q"></div>
             <div class="card-title">Qualidade Acadêmica</div>
-            <div class="card-weight" id="weight-SCORE_Q">Not ranked</div>
+            <div class="card-weight" id="weight-SCORE_Q">Não classificado</div>
           </div>
           <div class="drag-card" draggable="true" data-key="COL_calc">
             <div class="position-badge hidden" id="badge-COL_calc"></div>
             <div class="card-title">Custo de Vida</div>
-            <div class="card-weight" id="weight-COL_calc">Not ranked</div>
+            <div class="card-weight" id="weight-COL_calc">Não classificado</div>
           </div>
           <div class="drag-card" draggable="true" data-key="QOL_calc">
             <div class="position-badge hidden" id="badge-QOL_calc"></div>
             <div class="card-title">Qualidade de Vida</div>
-            <div class="card-weight" id="weight-QOL_calc">Not ranked</div>
+            <div class="card-weight" id="weight-QOL_calc">Não classificado</div>
           </div>
           <div class="drag-card" draggable="true" data-key="entry">
             <div class="position-badge hidden" id="badge-entry"></div>
             <div class="card-title">Facilidade de Entrada</div>
-            <div class="card-weight" id="weight-entry">Not ranked</div>
+            <div class="card-weight" id="weight-entry">Não classificado</div>
           </div>
         </div>
 
@@ -68,7 +68,7 @@
       </div>
 
       <div class="info-text">
-        Passe o mouse sobre as universidades para detalhes
+        Clique nas universidades para ver detalhes
       </div>
     </div>
   </div>
@@ -158,7 +158,7 @@
           weight.textContent = `${WEIGHTS[idx] * 100}%`;
         } else {
           badge.classList.add('hidden');
-          weight.textContent = 'Not ranked';
+          weight.textContent = 'Não classificado';
         }
       });
     }
@@ -179,6 +179,13 @@
     function getRank(value, values, higherBetter = true) {
       const sorted = higherBetter ? [...values].sort((a, b) => b - a) : [...values].sort((a, b) => a - b);
       return sorted.indexOf(value) + 1;
+    }
+
+    function getCategory(rank, total = 16) {
+      if (rank <= 4) return 'Excelente';
+      if (rank <= 9) return 'Bom';
+      if (rank <= 13) return 'Regular';
+      return 'Ruim';
     }
 
     function showResults() {
@@ -205,12 +212,17 @@
       top5.forEach((uni, idx) => {
         const card = document.createElement('div');
         card.className = 'result-card';
+        const cardId = `card-${idx}`;
 
         const colRank = getRank(uni.COL_raw, colRanks, true);
         const qolRank = getRank(uni.QOL_raw, qolRanks, true);
         const corteVal = uni.Corte_2025 ?? uni.Corte_2023;
         const corteRank = getRank(corteVal, corteRanks, false);
 
+        const colCategory = getCategory(colRank);
+        const qolCategory = getCategory(qolRank);
+
+        card.id = cardId;
         card.innerHTML = `
           <div class="rank-badge">${idx + 1}</div>
           <div class="result-uni-name">${uni.UNI}</div>
@@ -218,15 +230,15 @@
           <div class="result-details">
             <div class="detail-item">
               <span class="detail-label">Custo (€)</span>
-              <span class="detail-value">${uni.COL_raw} | #${colRank}</span>
+              <span class="detail-value">${colCategory} | #${colRank}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Qualidade de Vida</span>
-              <span class="detail-value">${uni.QOL_raw} | #${qolRank}</span>
+              <span class="detail-value">${qolCategory} | #${qolRank}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Nota de Corte</span>
-              <span class="detail-value">${uni.Corte_2025}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' + uni.Corte_2023 : uni.Corte_2023 != null ? uni.Corte_2023 : ''} | #${corteRank}</span>
+              <span class="detail-value">${uni.Corte_2025 != null ? uni.Corte_2025 + ' (2025)' : ''}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' : ''}${uni.Corte_2023 != null ? uni.Corte_2023 + ' (2023)' : ''} | #${corteRank}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Vagas Non-EU</span>
@@ -235,6 +247,7 @@
           </div>
         `;
 
+        card.onclick = () => card.classList.toggle('expanded');
         container.appendChild(card);
       });
 

@@ -304,9 +304,13 @@ button.secondary:hover {
   margin-top: 0;
 }
 
-.result-card:hover .result-details {
+.result-card.expanded .result-details {
   max-height: 160px;
   margin-top: 10px;
+}
+
+.result-card {
+  cursor: pointer;
 }
 
 .detail-item {
