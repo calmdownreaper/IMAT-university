@@ -181,11 +181,30 @@
       return sorted.indexOf(value) + 1;
     }
 
-    function getCategory(rank, total = 16) {
+    function getCostRank(value, values) {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted.lastIndexOf(value) + 1;
+    }
+
+    function getCostCategory(rank) {
+      if (rank <= 4) return 'barato';
+      if (rank <= 8) return 'moderado';
+      if (rank <= 12) return 'caro';
+      return 'caríssimo';
+    }
+
+    function getCategory(rank) {
       if (rank <= 4) return 'Excelente';
       if (rank <= 9) return 'Bom';
       if (rank <= 13) return 'Regular';
       return 'Ruim';
+    }
+
+    function getColorTier(rank, total) {
+      const percentile = (rank - 1) / total;
+      if (percentile < 0.33) return 'green';
+      if (percentile < 0.67) return 'yellow';
+      return 'red';
     }
 
     function showResults() {
@@ -204,6 +223,7 @@
       // Pre-calculate ranks for all metrics
       const colRanks = DATA.map(r => r.COL_raw);
       const qolRanks = DATA.map(r => r.QOL_raw);
+      const scoreQRanks = DATA.map(r => r.SCORE_Q);
       const corteRanks = DATA.map(r => r.Corte_2025 ?? r.Corte_2023).filter(v => v != null);
 
       const container = document.getElementById('resultsContainer');
@@ -214,13 +234,20 @@
         card.className = 'result-card';
         const cardId = `card-${idx}`;
 
-        const colRank = getRank(uni.COL_raw, colRanks, true);
+        const colRank = getCostRank(uni.COL_raw, colRanks);
         const qolRank = getRank(uni.QOL_raw, qolRanks, true);
+        const scoreQRank = getRank(uni.SCORE_Q, scoreQRanks, true);
         const corteVal = uni.Corte_2025 ?? uni.Corte_2023;
         const corteRank = getRank(corteVal, corteRanks, false);
 
-        const colCategory = getCategory(colRank);
+        const colCategory = getCostCategory(colRank);
         const qolCategory = getCategory(qolRank);
+        const scoreQCategory = getCategory(scoreQRank);
+
+        const colColor = getColorTier(colRank, colRanks.length);
+        const qolColor = getColorTier(qolRank, qolRanks.length);
+        const scoreQColor = getColorTier(scoreQRank, scoreQRanks.length);
+        const corteColor = getColorTier(corteRank, corteRanks.length);
 
         card.id = cardId;
         card.innerHTML = `
@@ -229,16 +256,20 @@
           <div class="result-score">${uni.finalScore.toFixed(1)}</div>
           <div class="result-details">
             <div class="detail-item">
+              <span class="detail-label">Qualidade da Faculdade</span>
+              <span class="detail-value ${scoreQColor}">${scoreQCategory} | #${scoreQRank}</span>
+            </div>
+            <div class="detail-item">
               <span class="detail-label">Custo (€)</span>
-              <span class="detail-value">${colCategory} | #${colRank}</span>
+              <span class="detail-value ${colColor}">${uni.COL_raw.toFixed(1)} | #${colRank} (${colCategory})</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Qualidade de Vida</span>
-              <span class="detail-value">${qolCategory} | #${qolRank}</span>
+              <span class="detail-value ${qolColor}">${qolCategory} | #${qolRank}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Nota de Corte</span>
-              <span class="detail-value">${uni.Corte_2025 != null ? uni.Corte_2025 + ' (2025)' : ''}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' : ''}${uni.Corte_2023 != null ? uni.Corte_2023 + ' (2023)' : ''} | #${corteRank}</span>
+              <span class="detail-value ${corteColor}">${uni.Corte_2025 != null ? uni.Corte_2025 + ' (2025)' : ''}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' : ''}${uni.Corte_2023 != null ? uni.Corte_2023 + ' (2023)' : ''} | #${corteRank}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">Vagas Non-EU</span>

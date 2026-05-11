@@ -337,6 +337,18 @@ button.secondary:hover {
   color: var(--accent);
 }
 
+.detail-value.green {
+  color: #4ade80;
+}
+
+.detail-value.yellow {
+  color: #facc15;
+}
+
+.detail-value.red {
+  color: #ef4444;
+}
+
 /* ─── Actions + info ───────────────────────────────────────── */
 .actions {
   border-top: 1px solid var(--line);
