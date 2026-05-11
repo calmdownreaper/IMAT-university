@@ -109,7 +109,7 @@ th {
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.25s ease-out, background 0.25s ease-out;
 }
 
 th:hover,
@@ -126,7 +126,7 @@ td {
 
 tbody tr {
   background: var(--surface);
-  transition: background 0.15s;
+  transition: background 0.25s ease-out, box-shadow 0.25s ease-out;
 }
 
 tbody tr:nth-child(4n + 1) {
@@ -204,7 +204,7 @@ th.active .sort-indicator {
 }
 
 .detail-value {
-  color: #d0d0d0;
+  color: var(--accent);
   font-family: var(--mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
