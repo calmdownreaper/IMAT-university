@@ -199,28 +199,66 @@
       const cols = table.cols.map(c => c.label);
       const rows = table.rows || [];
 
-      return rows.map(row => {
+      console.log('gviz cols:', cols);
+      console.log('gviz rows count:', rows.length);
+
+      // Normalize QOL values for min-max scaling (0-100)
+      const qolValues = rows.map(r => {
+        const idx = cols.indexOf('LAB24 QoL');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
+      });
+      const qolMin = Math.min(...qolValues);
+      const qolMax = Math.max(...qolValues);
+      const qolRange = qolMax - qolMin || 1;
+
+      // Normalize COL values for min-max scaling (0-100)
+      const colValues = rows.map(r => {
+        const idx = cols.indexOf('NUMBEO COL');
+        return r.c[idx] ? parseNumber(r.c[idx].v, 0) : 0;
+      });
+      const colMin = Math.min(...colValues);
+      const colMax = Math.max(...colValues);
+      const colRange = colMax - colMin || 1;
+
+      return rows.map((row, idx) => {
         const obj = {};
         cols.forEach((col, i) => {
           obj[col] = row.c[i] ? row.c[i].v : null;
         });
+
+        // Map sheet columns to expected format
+        const qolRaw = parseNumber(obj['LAB24 QoL'], 0);
+        const colRaw = parseNumber(obj['NUMBEO COL'], 0);
+        const corte2025 = parseNullableNumber(obj['Non-EU Cut-off (2025)']);
+        const corte2023 = parseNullableNumber(obj['Non-EU Cut-off (2023)']);
+
+        // Calculate Corte_calc: 0.70*2025 + 0.30*2023
+        let corteCalc = 0;
+        if (corte2025 != null && corte2023 != null) {
+          corteCalc = 0.70 * corte2025 + 0.30 * corte2023;
+        } else if (corte2025 != null) {
+          corteCalc = corte2025;
+        } else if (corte2023 != null) {
+          corteCalc = corte2023;
+        }
+
         return {
-          UNI: obj.UNI || '',
-          Qs_rep_calc: parseNumber(obj.Qs_rep_calc, 0),
-          Censis_calc: parseNumber(obj.Censis_calc, 0),
-          Nat_index_calc: parseNumber(obj.Nat_index_calc, 0),
-          Qs_rank_calc: parseNumber(obj.Qs_rank_calc, 0),
-          THE_rank_calc: parseNumber(obj.THE_rank_calc, 0),
-          SCORE_Q: parseNumber(obj.SCORE_Q, 0),
-          Corte_calc: parseNumber(obj.Corte_calc, 0),
-          COL_calc: parseNumber(obj.COL_calc, 0),
-          QOL_calc: parseNumber(obj.QOL_calc, 0),
-          city_size: Math.round(parseNumber(obj.city_size, 0)),
-          Non_EU_Seats: Math.round(parseNumber(obj.Non_EU_Seats, 0)),
-          COL_raw: parseNumber(obj.COL_raw, 0),
-          QOL_raw: parseNumber(obj.QOL_raw, 0),
-          Corte_2025: parseNullableNumber(obj.Corte_2025),
-          Corte_2023: parseNullableNumber(obj.Corte_2023)
+          UNI: obj['Instituição'] || '',
+          Qs_rep_calc: parseNumber(obj['QS Reputação'], 0),
+          Censis_calc: parseNumber(obj['Censis'], 0),
+          Nat_index_calc: parseNumber(obj['Nature Index'], 0),
+          Qs_rank_calc: parseNumber(obj['Rank QS (Med)'], 0),
+          THE_rank_calc: parseNumber(obj['Rank THE (Med)'], 0),
+          SCORE_Q: parseNumber(obj['Score Qualidade'], 0),
+          Corte_calc: Math.round(corteCalc * 100) / 100,
+          COL_calc: Math.round(((colMax - colRaw) / colRange) * 100),
+          QOL_calc: Math.round(((qolRaw - qolMin) / qolRange) * 100),
+          city_size: 1, // Default: no city size in sheet
+          Non_EU_Seats: Math.round(parseNumber(obj['Non-EU Seats'], 0)),
+          COL_raw: colRaw,
+          QOL_raw: qolRaw,
+          Corte_2025: corte2025,
+          Corte_2023: corte2023
         };
       });
     }
