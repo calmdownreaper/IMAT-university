@@ -12,19 +12,19 @@
 <body>
   <header>
     <h1>IMAT University Selector</h1>
-    <p class="subtitle">Ranked Italian medical universities for IMAT candidates</p>
+    <p class="subtitle">Universidades italianas de medicina classificadas para candidatos IMAT</p>
   </header>
 
   <div class="container">
     <table id="universityTable">
       <thead>
         <tr>
-          <th onclick="sortTable('UNI')">University<span class="sort-indicator"></span></th>
-          <th onclick="sortTable('SCORE_Q', true)" class="numeric">Quality Score<span class="sort-indicator"></span></th>
-          <th onclick="sortTable('Corte_calc', true)" class="numeric">Entry Difficulty<span class="sort-indicator"></span></th>
-          <th onclick="sortTable('COL_calc', true)" class="numeric">Cost of Living<span class="sort-indicator"></span></th>
-          <th onclick="sortTable('QOL_calc', true)" class="numeric">Quality of Life<span class="sort-indicator"></span></th>
-          <th onclick="sortTable('Non_EU_Seats', true)" class="numeric">Non-EU Seats<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('UNI')">Universidade<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('SCORE_Q', true)" class="numeric">Qualidade<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('Corte_calc', true)" class="numeric">Nota de Corte<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('COL_calc', true)" class="numeric">Custo (€)<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('QOL_calc', true)" class="numeric">Qualidade de Vida<span class="sort-indicator"></span></th>
+          <th onclick="sortTable('Non_EU_Seats', true)" class="numeric">Vagas Non-EU<span class="sort-indicator"></span></th>
         </tr>
       </thead>
       <tbody id="tableBody">
@@ -70,7 +70,7 @@
       // Pre-calculate ranks
       const colRanks = DATA.map(r => r.COL_raw);
       const qolRanks = DATA.map(r => r.QOL_raw);
-      const corteRanks = DATA.map(r => r.Corte_2025 || r.Corte_2023).filter(v => v !== null);
+      const corteRanks = DATA.map(r => r.Corte_2025 ?? r.Corte_2023).filter(v => v != null);
 
       data.forEach((row, idx) => {
         const tr = document.createElement('tr');
@@ -92,31 +92,31 @@
 
         const colRank = getRank(row.COL_raw, colRanks, true);
         const qolRank = getRank(row.QOL_raw, qolRanks, true);
-        const corteVal = row.Corte_2025 || row.Corte_2023;
+        const corteVal = row.Corte_2025 ?? row.Corte_2023;
         const corteRank = getRank(corteVal, corteRanks, false);
 
         detailRow.innerHTML = `
           <td colspan="6" class="detail-cell">
             <div class="detail-grid">
               <div class="detail-item">
-                <span class="detail-label">Cost (€)</span>
-                <span class="detail-value">${row.COL_raw} / #${colRank}</span>
+                <span class="detail-label">Custo (€)</span>
+                <span class="detail-value">${row.COL_raw} | #${colRank}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">QoL Index</span>
-                <span class="detail-value">${row.QOL_raw} / #${qolRank}</span>
+                <span class="detail-label">Qualidade de Vida</span>
+                <span class="detail-value">${row.QOL_raw} | #${qolRank}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Entry</span>
-                <span class="detail-value">${row.Corte_2025 || row.Corte_2023}${row.Corte_2025 && row.Corte_2023 ? '/' + row.Corte_2023 : ''} / #${corteRank}</span>
+                <span class="detail-label">Nota de Corte</span>
+                <span class="detail-value">${row.Corte_2025}${row.Corte_2025 != null && row.Corte_2023 != null ? ' / ' + row.Corte_2023 : row.Corte_2023 != null ? row.Corte_2023 : ''} | #${corteRank}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Non-EU Seats</span>
+                <span class="detail-label">Vagas Non-EU</span>
                 <span class="detail-value">${row.Non_EU_Seats}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">City Size</span>
-                <span class="detail-value">${row.city_size === 0 ? 'Small' : row.city_size === 1 ? 'Medium' : 'Large'}</span>
+                <span class="detail-label">Tamanho da Cidade</span>
+                <span class="detail-value">${row.city_size === 0 ? 'Pequena' : row.city_size === 1 ? 'Média' : 'Grande'}</span>
               </div>
             </div>
           </td>

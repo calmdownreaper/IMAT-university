@@ -55,8 +55,8 @@
     <!-- Results View -->
     <div id="resultsView" class="view">
       <div class="results-header">
-        <div class="results-title">Top 5 Universities</div>
-        <div class="results-subtitle">Based on your criteria</div>
+        <div class="results-title">Top 5 Universidades</div>
+        <div class="results-subtitle">Baseado em seus critérios</div>
       </div>
 
       <div class="results-container" id="resultsContainer">
@@ -68,7 +68,7 @@
       </div>
 
       <div class="info-text">
-        Hover over universities for details
+        Passe o mouse sobre as universidades para detalhes
       </div>
     </div>
   </div>
@@ -94,8 +94,6 @@
     ];
 
     const WEIGHTS = [0.40, 0.30, 0.20, 0.10];
-    const DIMENSIONS = ['SCORE_Q', 'COL_calc', 'QOL_calc', 'entry'];
-
     let priority = [];
     let draggedElement = null;
 
@@ -134,7 +132,6 @@
     }
 
     function swapCards(a, b) {
-      const aParent = a.parentNode;
       const placeholder = document.createElement('div');
       a.parentNode.insertBefore(placeholder, a);
       b.parentNode.insertBefore(a, b);
@@ -200,7 +197,7 @@
       // Pre-calculate ranks for all metrics
       const colRanks = DATA.map(r => r.COL_raw);
       const qolRanks = DATA.map(r => r.QOL_raw);
-      const corteRanks = DATA.map(r => r.Corte_2025 || r.Corte_2023).filter(v => v !== null);
+      const corteRanks = DATA.map(r => r.Corte_2025 ?? r.Corte_2023).filter(v => v != null);
 
       const container = document.getElementById('resultsContainer');
       container.innerHTML = '';
@@ -211,7 +208,7 @@
 
         const colRank = getRank(uni.COL_raw, colRanks, true);
         const qolRank = getRank(uni.QOL_raw, qolRanks, true);
-        const corteVal = uni.Corte_2025 || uni.Corte_2023;
+        const corteVal = uni.Corte_2025 ?? uni.Corte_2023;
         const corteRank = getRank(corteVal, corteRanks, false);
 
         card.innerHTML = `
@@ -220,19 +217,19 @@
           <div class="result-score">${uni.finalScore.toFixed(1)}</div>
           <div class="result-details">
             <div class="detail-item">
-              <span class="detail-label">Cost (€)</span>
-              <span class="detail-value">${uni.COL_raw} / #${colRank}</span>
+              <span class="detail-label">Custo (€)</span>
+              <span class="detail-value">${uni.COL_raw} | #${colRank}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">QoL Index</span>
-              <span class="detail-value">${uni.QOL_raw} / #${qolRank}</span>
+              <span class="detail-label">Qualidade de Vida</span>
+              <span class="detail-value">${uni.QOL_raw} | #${qolRank}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Entry</span>
-              <span class="detail-value">${uni.Corte_2025 || uni.Corte_2023}${uni.Corte_2025 && uni.Corte_2023 ? '/' + uni.Corte_2023 : ''} / #${corteRank}</span>
+              <span class="detail-label">Nota de Corte</span>
+              <span class="detail-value">${uni.Corte_2025}${uni.Corte_2025 != null && uni.Corte_2023 != null ? ' / ' + uni.Corte_2023 : uni.Corte_2023 != null ? uni.Corte_2023 : ''} | #${corteRank}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Non-EU</span>
+              <span class="detail-label">Vagas Non-EU</span>
               <span class="detail-value">${uni.Non_EU_Seats}</span>
             </div>
           </div>
