@@ -58,9 +58,19 @@
       return typeof num === 'number' ? num.toFixed(1) : num;
     }
 
+    function getRank(value, values, higherBetter = true) {
+      const sorted = higherBetter ? [...values].sort((a, b) => b - a) : [...values].sort((a, b) => a - b);
+      return sorted.indexOf(value) + 1;
+    }
+
     function renderTable(data) {
       const tbody = document.getElementById('tableBody');
       tbody.innerHTML = '';
+
+      // Pre-calculate ranks
+      const colRanks = DATA.map(r => r.COL_raw);
+      const qolRanks = DATA.map(r => r.QOL_raw);
+      const corteRanks = DATA.map(r => r.Corte_2025 || r.Corte_2023).filter(v => v !== null);
 
       data.forEach((row, idx) => {
         const tr = document.createElement('tr');
@@ -80,40 +90,25 @@
         detailRow.className = 'expanded-row';
         detailRow.id = `detail-${idx}`;
 
+        const colRank = getRank(row.COL_raw, colRanks, true);
+        const qolRank = getRank(row.QOL_raw, qolRanks, true);
+        const corteVal = row.Corte_2025 || row.Corte_2023;
+        const corteRank = getRank(corteVal, corteRanks, false);
+
         detailRow.innerHTML = `
           <td colspan="6" class="detail-cell">
             <div class="detail-grid">
               <div class="detail-item">
-                <span class="detail-label">QS Reputation</span>
-                <span class="detail-value">${formatNumber(row.Qs_rep_calc)}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">QS Rank</span>
-                <span class="detail-value">${formatNumber(row.Qs_rank_calc)}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">THE Rank</span>
-                <span class="detail-value">${formatNumber(row.THE_rank_calc)}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Censis Score</span>
-                <span class="detail-value">${formatNumber(row.Censis_calc)}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Nature Index</span>
-                <span class="detail-value">${formatNumber(row.Nat_index_calc)}</span>
-              </div>
-              <div class="detail-item">
                 <span class="detail-label">Cost (€)</span>
-                <span class="detail-value">${formatNumber(row.COL_calc)} | ${row.COL_raw}</span>
+                <span class="detail-value">${row.COL_raw} / #${colRank}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">QoL Index</span>
-                <span class="detail-value">${formatNumber(row.QOL_calc)} | ${row.QOL_raw}</span>
+                <span class="detail-value">${row.QOL_raw} / #${qolRank}</span>
               </div>
               <div class="detail-item">
-                <span class="detail-label">Entry (2025/23)</span>
-                <span class="detail-value">${formatNumber(100 - row.Corte_calc)} | ${row.Corte_2025 || row.Corte_2023}${row.Corte_2025 && row.Corte_2023 ? '/' + row.Corte_2023 : ''}</span>
+                <span class="detail-label">Entry</span>
+                <span class="detail-value">${row.Corte_2025 || row.Corte_2023}${row.Corte_2025 && row.Corte_2023 ? '/' + row.Corte_2023 : ''} / #${corteRank}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Non-EU Seats</span>

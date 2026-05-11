@@ -179,6 +179,11 @@
       return priority.reduce((sum, key, i) => sum + WEIGHTS[i] * dims[key], 0);
     }
 
+    function getRank(value, values, higherBetter = true) {
+      const sorted = higherBetter ? [...values].sort((a, b) => b - a) : [...values].sort((a, b) => a - b);
+      return sorted.indexOf(value) + 1;
+    }
+
     function showResults() {
       if (priority.length < 4) {
         alert('Please rank all 4 dimensions');
@@ -192,6 +197,11 @@
 
       const top5 = scored.sort((a, b) => b.finalScore - a.finalScore).slice(0, 5);
 
+      // Pre-calculate ranks for all metrics
+      const colRanks = DATA.map(r => r.COL_raw);
+      const qolRanks = DATA.map(r => r.QOL_raw);
+      const corteRanks = DATA.map(r => r.Corte_2025 || r.Corte_2023).filter(v => v !== null);
+
       const container = document.getElementById('resultsContainer');
       container.innerHTML = '';
 
@@ -199,34 +209,31 @@
         const card = document.createElement('div');
         card.className = 'result-card';
 
+        const colRank = getRank(uni.COL_raw, colRanks, true);
+        const qolRank = getRank(uni.QOL_raw, qolRanks, true);
+        const corteVal = uni.Corte_2025 || uni.Corte_2023;
+        const corteRank = getRank(corteVal, corteRanks, false);
+
         card.innerHTML = `
           <div class="rank-badge">${idx + 1}</div>
           <div class="result-uni-name">${uni.UNI}</div>
           <div class="result-score">${uni.finalScore.toFixed(1)}</div>
           <div class="result-details">
             <div class="detail-item">
-              <span class="detail-label">Quality</span>
-              <span class="detail-value">${uni.SCORE_Q.toFixed(1)}</span>
-            </div>
-            <div class="detail-item">
               <span class="detail-label">Cost (€)</span>
-              <span class="detail-value">${uni.COL_calc.toFixed(1)} | ${uni.COL_raw}</span>
+              <span class="detail-value">${uni.COL_raw} / #${colRank}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">QoL Index</span>
-              <span class="detail-value">${uni.QOL_calc.toFixed(1)} | ${uni.QOL_raw}</span>
+              <span class="detail-value">${uni.QOL_raw} / #${qolRank}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Entry (2025/23)</span>
-              <span class="detail-value">${(100 - uni.Corte_calc).toFixed(1)} | ${uni.Corte_2025 || uni.Corte_2023}${uni.Corte_2025 && uni.Corte_2023 ? '/' + uni.Corte_2023 : ''}</span>
+              <span class="detail-label">Entry</span>
+              <span class="detail-value">${uni.Corte_2025 || uni.Corte_2023}${uni.Corte_2025 && uni.Corte_2023 ? '/' + uni.Corte_2023 : ''} / #${corteRank}</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Non-EU Seats</span>
+              <span class="detail-label">Non-EU</span>
               <span class="detail-value">${uni.Non_EU_Seats}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">City</span>
-              <span class="detail-value">${uni.city_size === 0 ? 'Small' : uni.city_size === 1 ? 'Medium' : 'Large'}</span>
             </div>
           </div>
         `;
