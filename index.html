@@ -249,114 +249,81 @@
         throw new Error('Sheet API error: ' + (json.message || 'unknown'));
       }
 
-      const table = json.table || {};
-      const cols = (table.cols || []).map(c => c.label || c.id || '');
-      const rows = table.rows || [];
-      const rowValues = rows.map(row => cols.map((_, i) => (row.c && row.c[i]) ? row.c[i].v : null));
-      const colIndex = Object.fromEntries(cols.map((col, i) => [col, i]));
+      const payload = json.table || {};
 
-      console.log('gviz cols:', cols);
-      console.log('gviz rows count:', rowValues.length);
+      // Extract headers and all rows (forcing "v" property to avoid formatted values)
+      const headers = (payload.cols || []).map(col => col.label || col.id || '');
+      const allRows = (payload.rows || []).map(row => {
+        let rowData = {};
+        (row.c || []).forEach((cell, index) => {
+          rowData[headers[index]] = (cell && cell.v !== undefined) ? cell.v : null;
+        });
+        return rowData;
+      });
 
-      const rawByUni = new Map();
-      if (colIndex['Instituição'] !== undefined) {
-        const idxUni = colIndex['Instituição'];
-        const idxSeats = colIndex['Non-EU Seats'];
-        const idxColRaw = colIndex['NUMBEO COL'];
-        const idxQolRaw = colIndex['LAB24 QoL'];
-        const idxC2025 = colIndex['Non-EU Cut-off (2025)'];
-        const idxC2023 = colIndex['Non-EU Cut-off (2023)'];
+      console.log('gviz headers:', headers);
+      console.log('gviz total rows:', allRows.length);
 
-        rowValues.forEach((values, idx) => {
-          const uni = values[idxUni];
-          if (!isValidUniName(uni)) return;
+      // Bifurcated structure: top half has raw data, bottom half has calc metrics
+      const topHalf = allRows.slice(0, 16);
+      const bottomHalf = allRows.slice(17);
 
-          let corte2025 = parseNullableNumber(values[idxC2025]);
-          let corte2023 = parseNullableNumber(values[idxC2023]);
+      console.log('Top half rows:', topHalf.length, 'Bottom half rows:', bottomHalf.length);
 
-          // Null coalescing: if 2025 null, use 2023; if 2023 null, use 2025
+      // Extract raw cut-off data from top half
+      const rawByInstitution = new Map();
+      topHalf.forEach(uni => {
+        if (uni['Instituição'] && isValidUniName(uni['Instituição'])) {
+          let corte2025 = parseNullableNumber(uni['Non-EU Cut-off (2025)']);
+          let corte2023 = parseNullableNumber(uni['Non-EU Cut-off (2023)']);
           corte2025 = corte2025 ?? corte2023;
           corte2023 = corte2023 ?? corte2025;
 
-          rawByUni.set(String(uni).trim(), {
-            Non_EU_Seats: Math.round(parseNumber(values[idxSeats], 0)),
-            COL_raw: parseNumber(values[idxColRaw], 0),
-            QOL_raw: parseNumber(values[idxQolRaw], 0),
+          rawByInstitution.set(String(uni['Instituição']).trim(), {
+            Non_EU_Seats: Math.round(parseNumber(uni['Non-EU Seats'], 0)),
+            COL_raw: parseNumber(uni['NUMBEO COL'], 0),
+            QOL_raw: parseNumber(uni['LAB24 QoL'], 0),
             Corte_2025: corte2025,
             Corte_2023: corte2023
           });
-        });
-      }
-
-      let data = [];
-
-      // Case 1: already normalized schema from sheet
-      if (colIndex.UNI !== undefined && colIndex.Qs_rep_calc !== undefined) {
-        data = rowValues.map((values) => ({
-          UNI: values[colIndex.UNI] ? String(values[colIndex.UNI]).trim() : '',
-          Qs_rep_calc: clampPercent(parseNumber(values[colIndex.Qs_rep_calc], 0)),
-          Censis_calc: clampPercent(parseNumber(values[colIndex.Censis_calc], 0)),
-          Nat_index_calc: clampPercent(parseNumber(values[colIndex.Nat_index_calc], 0)),
-          Qs_rank_calc: clampPercent(parseNumber(values[colIndex.Qs_rank_calc], 0)),
-          THE_rank_calc: clampPercent(parseNumber(values[colIndex.THE_rank_calc], 0)),
-          SCORE_Q: clampPercent(parseNumber(values[colIndex.SCORE_Q], 0)),
-          Corte_calc: clampPercent(parseNumber(values[colIndex.Corte_calc], 0)),
-          COL_calc: clampPercent(parseNumber(values[colIndex.COL_calc], 0)),
-          QOL_calc: clampPercent(parseNumber(values[colIndex.QOL_calc], 0)),
-          city_size: Math.round(parseNumber(values[colIndex.city_size], 0)),
-          Non_EU_Seats: Math.round(parseNumber(values[colIndex.Non_EU_Seats], 0)),
-          COL_raw: parseNumber(values[colIndex.COL_raw], 0),
-          QOL_raw: parseNumber(values[colIndex.QOL_raw], 0),
-          Corte_2025: parseNullableNumber(values[colIndex.Corte_2025]),
-          Corte_2023: parseNullableNumber(values[colIndex.Corte_2023])
-        })).filter((row) => isValidUniName(row.UNI));
-      } else {
-        // Case 2: bifurcated sheet. Display rows (0-15) + header (16) + calc rows (18-33).
-        // Extract calc metrics from rows starting at index 18.
-        const calcStartIdx = rowValues.findIndex((v, idx) => idx >= 17 && isValidUniName(v[0]) && /^UNI$/i.test(v[0]));
-        const calcMetricIdx = calcStartIdx >= 0 ? calcStartIdx : 18;
-
-        if (calcMetricIdx < rowValues.length) {
-          // Build column index for calc block
-          const calcHeaderRow = rowValues[calcMetricIdx];
-          const calcColIndex = Object.fromEntries(
-            calcHeaderRow.map((col, i) => [col, i]).filter(([col]) => col)
-          );
-
-          // Extract calc rows (skip header row)
-          data = rowValues.slice(calcMetricIdx + 1).map((values) => {
-            const uni = values[calcColIndex.UNI] ? String(values[calcColIndex.UNI]).trim() : '';
-            if (!isValidUniName(uni)) return null;
-
-            const raw = rawByUni.get(uni) || {};
-
-            let corte2025 = raw.Corte_2025 ?? null;
-            let corte2023 = raw.Corte_2023 ?? null;
-            // Null coalescing for cut-offs
-            corte2025 = corte2025 ?? corte2023;
-            corte2023 = corte2023 ?? corte2025;
-
-            return {
-              UNI: uni,
-              Qs_rep_calc: clampPercent(parseNumber(values[calcColIndex.Qs_rep_calc], 0)),
-              Censis_calc: clampPercent(parseNumber(values[calcColIndex.Censis_calc], 0)),
-              Nat_index_calc: clampPercent(parseNumber(values[calcColIndex.Nat_index_calc], 0)),
-              Qs_rank_calc: clampPercent(parseNumber(values[calcColIndex.Qs_rank_calc], 0)),
-              THE_rank_calc: clampPercent(parseNumber(values[calcColIndex.THE_rank_calc], 0)),
-              SCORE_Q: clampPercent(parseNumber(values[calcColIndex.SCORE_Q], 0)),
-              Corte_calc: clampPercent(parseNumber(values[calcColIndex.Corte_calc], 0)),
-              COL_calc: clampPercent(parseNumber(values[calcColIndex.COL_calc], 0)),
-              QOL_calc: clampPercent(parseNumber(values[calcColIndex.QOL_calc], 0)),
-              city_size: Math.round(parseNumber(values[calcColIndex.city_size] ?? 0, 1)),
-              Non_EU_Seats: raw.Non_EU_Seats ?? 0,
-              COL_raw: raw.COL_raw ?? 0,
-              QOL_raw: raw.QOL_raw ?? 0,
-              Corte_2025: corte2025,
-              Corte_2023: corte2023
-            };
-          }).filter(Boolean);
         }
-      }
+      });
+
+      console.log('Extracted raw data for', rawByInstitution.size, 'institutions');
+
+      // Merge: match bottom half calc data with top half raw data
+      const data = bottomHalf
+        .filter(row => row.UNI && isValidUniName(row.UNI))
+        .map(calcRow => {
+          const uni = String(calcRow.UNI).trim();
+          // In bottom half, university name is keyed under "Posição" (position), not "Instituição"
+          // But we use direct name match since calcRow.UNI is the actual name
+          const raw = rawByInstitution.get(uni) || {};
+
+          let corte2025 = raw.Corte_2025 ?? null;
+          let corte2023 = raw.Corte_2023 ?? null;
+          corte2025 = corte2025 ?? corte2023;
+          corte2023 = corte2023 ?? corte2025;
+
+          return {
+            UNI: uni,
+            Qs_rep_calc: clampPercent(parseNumber(calcRow.Qs_rep_calc, 0)),
+            Censis_calc: clampPercent(parseNumber(calcRow.Censis_calc, 0)),
+            Nat_index_calc: clampPercent(parseNumber(calcRow.Nat_index_calc, 0)),
+            Qs_rank_calc: clampPercent(parseNumber(calcRow.Qs_rank_calc, 0)),
+            THE_rank_calc: clampPercent(parseNumber(calcRow.THE_rank_calc, 0)),
+            SCORE_Q: clampPercent(parseNumber(calcRow.SCORE_Q, 0)),
+            Corte_calc: clampPercent(parseNumber(calcRow.Corte_calc, 0)),
+            COL_calc: clampPercent(parseNumber(calcRow.COL_calc, 0)),
+            QOL_calc: clampPercent(parseNumber(calcRow.QOL_calc, 0)),
+            city_size: Math.round(parseNumber(calcRow.city_size ?? 0, 1)),
+            Non_EU_Seats: raw.Non_EU_Seats ?? 0,
+            COL_raw: raw.COL_raw ?? 0,
+            QOL_raw: raw.QOL_raw ?? 0,
+            Corte_2025: corte2025,
+            Corte_2023: corte2023
+          };
+        });
 
       const dedup = new Map();
       data.forEach((row) => {
