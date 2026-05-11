@@ -304,7 +304,16 @@
         }
 
         return data;
-      }).filter(d => d.UNI && d.UNI.trim().length > 0 && isNaN(parseFloat(d.UNI)));
+      }).filter(d => {
+        if (!d.UNI || d.UNI.trim().length === 0) return false;
+        const uni = d.UNI.trim();
+        // Skip if looks like a column name or system value (contains underscores, all caps, etc)
+        if (uni.includes('_') || /^[A-Z0-9\s\-\.]+$/.test(uni) && uni.length < 5) return false;
+        // Skip if numeric
+        if (!isNaN(parseFloat(uni))) return false;
+        // Keep only rows that look like university names (contain space or certain keywords)
+        return uni.includes(' ') || uni.includes('University') || uni.includes('of');
+      });
     }
 
     async function loadFromCSV(url) {
