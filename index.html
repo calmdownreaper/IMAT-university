@@ -86,7 +86,7 @@
           <thead>
             <tr>
               <th onclick="sortGeneralRanking('UNI')">Universidade<span class="rank-sort-indicator"></span></th>
-              <th onclick="sortGeneralRanking('SCORE_Q', true)" class="numeric">Qualidade<span class="rank-sort-indicator"></span></th>
+              <th onclick="sortGeneralRanking('SCORE_Q', true)" class="numeric">Prestígio<span class="rank-sort-indicator"></span></th>
               <th onclick="sortGeneralRanking('Corte_real', true)" class="numeric">Nota de Corte<span class="rank-sort-indicator"></span></th>
               <th onclick="sortGeneralRanking('COL_raw', true)" class="numeric">Custo (€)<span class="rank-sort-indicator"></span></th>
               <th onclick="sortGeneralRanking('QOL_calc', true)" class="numeric">Qualidade de Vida<span class="rank-sort-indicator"></span></th>
@@ -544,18 +544,23 @@
     }
 
     function getCostCategory(row) {
+      const uniName = String(row?.nome || row?.UNI || '').trim().toLowerCase();
       const cost = Number(row.custoCalc);
-      if (!Number.isFinite(cost)) return 'caro';
-      if (cost >= 75) return 'caríssimo';
-      if (cost >= 60) return 'caro';
-      if (cost >= 40) return 'moderado';
-      return 'barato';
+      if (!Number.isFinite(cost)) return 'moderada';
+
+      // Regra explícita solicitada: somente Milão (Statale) como "muito cara"
+      if (uniName === 'university of milan (statale)') return 'muito cara';
+
+      // COL_calc mais baixo = custo real mais alto
+      if (cost <= 35) return 'cara';
+      if (cost <= 60) return 'moderada';
+      return 'barata';
     }
 
     function getCostColor(category) {
-      if (category === 'caríssimo') return 'red';
-      if (category === 'caro') return 'orange';
-      if (category === 'moderado') return 'yellow';
+      if (category === 'muito cara') return 'red';
+      if (category === 'cara') return 'orange';
+      if (category === 'moderada') return 'yellow';
       return 'green';
     }
 
@@ -668,20 +673,20 @@
       document.getElementById('resultsView').classList.add('active');
     }
 
-    function getGeneralCostCategory(row) {
-      const cost = Number(row.COL_raw);
-      if (!Number.isFinite(cost)) return 'caro';
-      if (cost >= 75) return 'caríssimo';
-      if (cost >= 60) return 'caro';
-      if (cost >= 40) return 'moderado';
-      return 'barato';
+    function getGeneralCostCategory(rank, total) {
+      if (!Number.isFinite(rank) || !Number.isFinite(total) || total <= 0) return 'moderado';
+      const ratio = rank / total;
+      if (ratio <= 0.25) return 'baixo';
+      if (ratio <= 0.55) return 'moderado';
+      if (ratio <= 0.8) return 'alto';
+      return 'muito alto';
     }
 
     function getGeneralCostColor(category) {
-      if (category === 'caríssimo') return 'red';
-      if (category === 'caro') return 'orange';
+      if (category === 'baixo') return 'green';
       if (category === 'moderado') return 'yellow';
-      return 'green';
+      if (category === 'alto') return 'orange';
+      return 'red';
     }
 
     function renderGeneralRanking(rows) {
@@ -701,6 +706,15 @@
       const qolRanks = DATA.map(r => r.QOL_raw);
       const scoreRanks = DATA.map(r => r.SCORE_Q);
       const corteRanks = DATA.map(r => r.Corte_2025 ?? r.Corte_2023).filter(v => v != null);
+      const scoreValues = DATA.map(r => r.SCORE_Q).filter(v => Number.isFinite(v));
+      const costValues = DATA.map(r => r.COL_raw).filter(v => Number.isFinite(v));
+
+      const scoreMin = Math.min(...scoreValues);
+      const scoreMax = Math.max(...scoreValues);
+      const scoreRange = scoreMax - scoreMin;
+      const costMin = Math.min(...costValues);
+      const costMax = Math.max(...costValues);
+      const costRange = costMax - costMin;
 
       rows.forEach((row, idx) => {
         const detailId = `rank-detail-${idx}`;
@@ -712,13 +726,20 @@
         const hasCorte = corteVal != null && Number.isFinite(corteVal);
         const corteRank = hasCorte ? getRank(corteVal, corteRanks, false) : null;
 
-        const colCategory = getGeneralCostCategory(row);
+        const colCategory = getGeneralCostCategory(colRank, colRanks.length);
         const colColor = getGeneralCostColor(colCategory);
+        const colRankColor = getColorTier(colRank, colRanks.length);
         const qolCategory = getCategory(qolRank);
         const scoreCategory = getCategory(scoreRank);
         const scoreColor = getColorTier(scoreRank, scoreRanks.length);
         const qolColor = getColorTier(qolRank, qolRanks.length);
         const corteColor = hasCorte ? getColorTier(corteRank, corteRanks.length) : '';
+        const scoreMinMax = scoreRange < 1e-9
+          ? 50
+          : ((row.SCORE_Q - scoreMin) / scoreRange) * 100;
+        const costMinMax = costRange < 1e-9
+          ? 50
+          : ((row.COL_raw - costMin) / costRange) * 100;
 
         const tr = document.createElement('tr');
         tr.className = 'rank-row';
@@ -726,13 +747,16 @@
         const corteMainText = row.Corte_2025 != null
           ? `${row.Corte_2025} (2025)`
           : (row.Corte_2023 != null ? `${row.Corte_2023} (2023)` : 'N/A');
+        const corteMainWithRank = hasCorte
+          ? `${corteMainText} | #${corteRank}`
+          : 'N/A';
 
         tr.innerHTML = `
           <td class="uni-name">${row.UNI}</td>
-          <td class="numeric">${row.SCORE_Q.toFixed(1)}</td>
-          <td class="numeric">${corteMainText}</td>
-          <td class="numeric">${row.COL_raw.toFixed(1)}</td>
-          <td class="numeric">${row.QOL_calc.toFixed(1)}</td>
+          <td class="numeric"><span class="rank-metric ${scoreColor}">#${scoreRank}</span></td>
+          <td class="numeric"><span class="rank-metric ${corteColor}">${corteMainWithRank}</span></td>
+          <td class="numeric"><span class="rank-metric ${colRankColor}">#${colRank}</span></td>
+          <td class="numeric"><span class="rank-metric ${qolColor}">${row.QOL_calc.toFixed(1)} | #${qolRank}</span></td>
           <td class="numeric">${row.Non_EU_Seats}</td>
         `;
         tbody.appendChild(tr);
@@ -745,12 +769,12 @@
             <div class="rank-detail-box">
               <div class="rank-detail-grid">
                 <div class="rank-detail-item">
-                  <span class="rank-detail-label">Qualidade</span>
-                  <span class="rank-detail-value ${scoreColor}">${scoreCategory} | #${scoreRank}</span>
+                  <span class="rank-detail-label">Prestígio</span>
+                  <span class="rank-detail-value ${scoreColor}">${scoreCategory} | #${scoreRank} | ${scoreMinMax.toFixed(1)}/100.0</span>
                 </div>
                 <div class="rank-detail-item">
                   <span class="rank-detail-label">Custo (€)</span>
-                  <span class="rank-detail-value ${colColor}">${row.COL_raw.toFixed(1)} | #${colRank} (${colCategory})</span>
+                  <span class="rank-detail-value ${colColor}">${colCategory} | #${colRank} | ${costMinMax.toFixed(1)}/100.0</span>
                 </div>
                 <div class="rank-detail-item">
                   <span class="rank-detail-label">Qualidade de Vida</span>

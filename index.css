@@ -187,6 +187,16 @@ h1 {
   color: #ccc;
 }
 
+.rank-metric {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.rank-metric.green { color: #8bd18b; }
+.rank-metric.yellow { color: #e3d06c; }
+.rank-metric.orange { color: #f2a65a; }
+.rank-metric.red { color: #ff6b6b; }
+
 .rank-row {
   background: var(--surface);
   transition: background 0.25s ease-out, box-shadow 0.25s ease-out;
