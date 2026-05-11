@@ -16,7 +16,7 @@
     <p class="subtitle">Encontre sua melhor opção</p>
   </header>
 
-  <div class="container">
+  <div id="selectorPanel" class="container main-active">
     <!-- Selector View -->
     <div id="selectorView" class="view active">
       <div class="selector-content">
@@ -65,7 +65,7 @@
 
       <div class="actions">
         <button onclick="backToSelector()">Ajustar Critérios</button>
-        <button class="secondary" onclick="openFullRanking()">Ver Todas</button>
+        <button class="secondary" onclick="goToRanking()">Ranking Geral</button>
       </div>
 
       <div class="info-text">
@@ -74,8 +74,40 @@
     </div>
   </div>
 
+  <section id="rankingPanel" class="ranking-panel" aria-label="Ranking geral">
+    <div class="rank-shell">
+      <div class="rank-shell-header">
+        <div class="rank-shell-title">Ranking Geral</div>
+        <div class="rank-shell-subtitle">Tabela completa das universidades</div>
+      </div>
+
+      <div class="rank-table-wrap">
+        <table id="generalRankingTable" class="rank-table">
+          <thead>
+            <tr>
+              <th onclick="sortGeneralRanking('UNI')">Universidade<span class="rank-sort-indicator"></span></th>
+              <th onclick="sortGeneralRanking('SCORE_Q', true)" class="numeric">Qualidade<span class="rank-sort-indicator"></span></th>
+              <th onclick="sortGeneralRanking('Corte_real', true)" class="numeric">Nota de Corte<span class="rank-sort-indicator"></span></th>
+              <th onclick="sortGeneralRanking('COL_raw', true)" class="numeric">Custo (€)<span class="rank-sort-indicator"></span></th>
+              <th onclick="sortGeneralRanking('QOL_calc', true)" class="numeric">Qualidade de Vida<span class="rank-sort-indicator"></span></th>
+              <th onclick="sortGeneralRanking('Non_EU_Seats', true)" class="numeric">Vagas Non-EU<span class="rank-sort-indicator"></span></th>
+            </tr>
+          </thead>
+          <tbody id="generalRankingBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <nav class="bottom-nav" aria-label="Navegação principal">
+    <button id="tabSelector" class="bottom-tab active" type="button" onclick="switchMainView('selector')">Seletor</button>
+    <button id="tabRanking" class="bottom-tab" type="button" onclick="switchMainView('ranking')">Ranking Geral</button>
+  </nav>
+
   <script>
     let DATA = [];
+    let currentMainView = 'selector';
+    let generalRankingSort = { column: 'SCORE_Q', ascending: false };
     const SHEETS_API_URL = 'https://docs.google.com/spreadsheets/d/1X0wda4s0XcHJKwgHzAcJytlRZny-rCw1YKPrYwDBpZM/gviz/tq?tqx=out:json';
     const LOCAL_CSV_URL = 'imat_uni.csv';
     const FETCH_TIMEOUT_MS = 12000;
@@ -226,7 +258,7 @@
               : (scoreQualidadeBottom ?? 0)
           );
           const qsReputacao = clampPercent(toMetricNumber(uni['QS Reputação'], 0));
-          const corteCalc = clampPercent(calcData ? toMetricNumber(calcData['Corte_calc'], 0) : 0);
+          const corteCalc = clampPercent(calcData ? toMetricNumber(calcData['Instituição'], 0) : 0);
           const corte2025 = toNullableMetric(uni['Non-EU Cut-off (2025)']);
           const corte2023 = toNullableMetric(uni['Non-EU Cut-off (2023)']);
 
@@ -323,6 +355,7 @@
       }
 
       DATA = data;
+      renderGeneralRanking(DATA);
       console.log('DATA loaded:', DATA.length, 'universities');
       init();
     }
@@ -551,6 +584,18 @@
         finalScore: calcFinal(row)
       }));
 
+      const allScores = scored.map(row => row.finalScore);
+      const minScore = Math.min(...allScores);
+      const maxScore = Math.max(...allScores);
+      const scoreRange = maxScore - minScore;
+
+      scored.forEach((row) => {
+        const compatPercent = scoreRange < 1e-9
+          ? 50
+          : ((row.finalScore - minScore) / scoreRange) * 100;
+        row.compatPercent = Math.round(Math.max(0, Math.min(100, compatPercent)));
+      });
+
       const top5 = scored.sort((a, b) => b.finalScore - a.finalScore).slice(0, 5);
 
       // Pre-calculate ranks for all metrics
@@ -576,6 +621,7 @@
         const colCategory = getCostCategory(uni);
         const qolCategory = getCategory(qolRank);
         const scoreQCategory = getCategory(scoreQRank);
+        const compatClass = uni.compatPercent >= 75 ? 'compat-high' : (uni.compatPercent >= 45 ? 'compat-mid' : 'compat-low');
 
         const colColor = getCostColor(colCategory);
         const qolColor = getColorTier(qolRank, qolRanks.length);
@@ -586,7 +632,10 @@
         card.innerHTML = `
           <div class="rank-badge">${idx + 1}</div>
           <div class="result-uni-name">${uni.nome}</div>
-          <div class="result-score">${uni.finalScore.toFixed(1)}</div>
+          <div class="result-score-wrap">
+            <div class="result-score-label">Compatibilidade</div>
+            <div class="result-score ${compatClass}">${uni.compatPercent}%</div>
+          </div>
           <div class="result-details">
             <div class="detail-item">
               <span class="detail-label">Qualidade da Faculdade</span>
@@ -619,18 +668,210 @@
       document.getElementById('resultsView').classList.add('active');
     }
 
+    function getGeneralCostCategory(row) {
+      const cost = Number(row.COL_raw);
+      if (!Number.isFinite(cost)) return 'caro';
+      if (cost >= 75) return 'caríssimo';
+      if (cost >= 60) return 'caro';
+      if (cost >= 40) return 'moderado';
+      return 'barato';
+    }
+
+    function getGeneralCostColor(category) {
+      if (category === 'caríssimo') return 'red';
+      if (category === 'caro') return 'orange';
+      if (category === 'moderado') return 'yellow';
+      return 'green';
+    }
+
+    function renderGeneralRanking(rows) {
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const sorted = [...rows].sort((a, b) => b.SCORE_Q - a.SCORE_Q);
+      generalRankingSort = { column: 'SCORE_Q', ascending: false };
+      renderGeneralRankingTable(sorted);
+      updateGeneralSortIndicators();
+    }
+
+    function renderGeneralRankingTable(rows) {
+      const tbody = document.getElementById('generalRankingBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      const colRanks = DATA.map(r => r.COL_raw);
+      const qolRanks = DATA.map(r => r.QOL_raw);
+      const scoreRanks = DATA.map(r => r.SCORE_Q);
+      const corteRanks = DATA.map(r => r.Corte_2025 ?? r.Corte_2023).filter(v => v != null);
+
+      rows.forEach((row, idx) => {
+        const detailId = `rank-detail-${idx}`;
+
+        const colRank = getCostRank(row.COL_raw, colRanks);
+        const qolRank = getRank(row.QOL_raw, qolRanks, true);
+        const scoreRank = getRank(row.SCORE_Q, scoreRanks, true);
+        const corteVal = row.Corte_2025 ?? row.Corte_2023;
+        const hasCorte = corteVal != null && Number.isFinite(corteVal);
+        const corteRank = hasCorte ? getRank(corteVal, corteRanks, false) : null;
+
+        const colCategory = getGeneralCostCategory(row);
+        const colColor = getGeneralCostColor(colCategory);
+        const qolCategory = getCategory(qolRank);
+        const scoreCategory = getCategory(scoreRank);
+        const scoreColor = getColorTier(scoreRank, scoreRanks.length);
+        const qolColor = getColorTier(qolRank, qolRanks.length);
+        const corteColor = hasCorte ? getColorTier(corteRank, corteRanks.length) : '';
+
+        const tr = document.createElement('tr');
+        tr.className = 'rank-row';
+        tr.onclick = () => toggleGeneralRankingDetail(detailId);
+        const corteMainText = row.Corte_2025 != null
+          ? `${row.Corte_2025} (2025)`
+          : (row.Corte_2023 != null ? `${row.Corte_2023} (2023)` : 'N/A');
+
+        tr.innerHTML = `
+          <td class="uni-name">${row.UNI}</td>
+          <td class="numeric">${row.SCORE_Q.toFixed(1)}</td>
+          <td class="numeric">${corteMainText}</td>
+          <td class="numeric">${row.COL_raw.toFixed(1)}</td>
+          <td class="numeric">${row.QOL_calc.toFixed(1)}</td>
+          <td class="numeric">${row.Non_EU_Seats}</td>
+        `;
+        tbody.appendChild(tr);
+
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'rank-expanded-row';
+        detailTr.id = detailId;
+        detailTr.innerHTML = `
+          <td colspan="6" class="rank-detail-cell">
+            <div class="rank-detail-box">
+              <div class="rank-detail-grid">
+                <div class="rank-detail-item">
+                  <span class="rank-detail-label">Qualidade</span>
+                  <span class="rank-detail-value ${scoreColor}">${scoreCategory} | #${scoreRank}</span>
+                </div>
+                <div class="rank-detail-item">
+                  <span class="rank-detail-label">Custo (€)</span>
+                  <span class="rank-detail-value ${colColor}">${row.COL_raw.toFixed(1)} | #${colRank} (${colCategory})</span>
+                </div>
+                <div class="rank-detail-item">
+                  <span class="rank-detail-label">Qualidade de Vida</span>
+                  <span class="rank-detail-value ${qolColor}">${qolCategory} | #${qolRank}</span>
+                </div>
+                <div class="rank-detail-item">
+                  <span class="rank-detail-label">Nota de Corte</span>
+                  <span class="rank-detail-value ${corteColor}">${hasCorte ? `${row.Corte_2025 != null ? row.Corte_2025 + ' (2025)' : ''}${row.Corte_2025 != null && row.Corte_2023 != null ? ' / ' : ''}${row.Corte_2023 != null ? row.Corte_2023 + ' (2023)' : ''} | #${corteRank}` : 'N/A'}</span>
+                </div>
+                <div class="rank-detail-item">
+                  <span class="rank-detail-label">Vagas Non-EU</span>
+                  <span class="rank-detail-value">${row.Non_EU_Seats}</span>
+                </div>
+              </div>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(detailTr);
+      });
+    }
+
+    function toggleGeneralRankingDetail(detailId) {
+      const detailRow = document.getElementById(detailId);
+      if (!detailRow) return;
+
+      const willOpen = !detailRow.classList.contains('show');
+      document.querySelectorAll('.rank-expanded-row.show').forEach((row) => {
+        if (row !== detailRow) row.classList.remove('show');
+      });
+      detailRow.classList.toggle('show', willOpen);
+    }
+
+    function sortGeneralRanking(column, isNumeric = false) {
+      let ascending;
+      if (generalRankingSort.column === column) {
+        ascending = !generalRankingSort.ascending;
+      } else {
+        ascending = column === 'COL_raw';
+      }
+
+      const sorted = [...DATA].sort((a, b) => {
+        const aVal = column === 'Corte_real' ? (a.Corte_2025 ?? a.Corte_2023) : a[column];
+        const bVal = column === 'Corte_real' ? (b.Corte_2025 ?? b.Corte_2023) : b[column];
+
+        if (isNumeric) {
+          const aNum = Number(aVal);
+          const bNum = Number(bVal);
+          if (!Number.isFinite(aNum) && !Number.isFinite(bNum)) return 0;
+          if (!Number.isFinite(aNum)) return 1;
+          if (!Number.isFinite(bNum)) return -1;
+          return ascending ? aNum - bNum : bNum - aNum;
+        }
+
+        return ascending
+          ? String(aVal).localeCompare(String(bVal))
+          : String(bVal).localeCompare(String(aVal));
+      });
+
+      generalRankingSort = { column, ascending };
+      renderGeneralRankingTable(sorted);
+      updateGeneralSortIndicators();
+    }
+
+    function updateGeneralSortIndicators() {
+      const table = document.getElementById('generalRankingTable');
+      if (!table) return;
+
+      const headers = table.querySelectorAll('th');
+      headers.forEach((header) => {
+        header.classList.remove('active');
+        const indicator = header.querySelector('.rank-sort-indicator');
+        if (indicator) indicator.textContent = '';
+      });
+
+      const columnMap = {
+        UNI: 0,
+        SCORE_Q: 1,
+        Corte_real: 2,
+        COL_raw: 3,
+        QOL_calc: 4,
+        Non_EU_Seats: 5
+      };
+
+      const idx = columnMap[generalRankingSort.column];
+      if (idx === undefined) return;
+
+      headers[idx].classList.add('active');
+      const indicator = headers[idx].querySelector('.rank-sort-indicator');
+      if (indicator) {
+        indicator.textContent = generalRankingSort.ascending ? '↑' : '↓';
+      }
+    }
+
     function backToSelector() {
       document.getElementById('resultsView').classList.remove('active');
       document.getElementById('selectorView').classList.add('active');
     }
 
-    function openFullRanking() {
-      window.open('ranking.html', '_blank');
+    function switchMainView(view) {
+      currentMainView = view;
+      const selectorPanel = document.getElementById('selectorPanel');
+      const rankingPanel = document.getElementById('rankingPanel');
+      const tabSelector = document.getElementById('tabSelector');
+      const tabRanking = document.getElementById('tabRanking');
+      const selectorActive = view === 'selector';
+
+      selectorPanel.classList.toggle('main-active', selectorActive);
+      rankingPanel.classList.toggle('main-active', !selectorActive);
+      tabSelector.classList.toggle('active', selectorActive);
+      tabRanking.classList.toggle('active', !selectorActive);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function goToRanking() {
+      switchMainView('ranking');
     }
 
     function init() {
       setupDragDrop();
       updatePriority();
+      switchMainView(currentMainView);
     }
 
     // Load data and init
