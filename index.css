@@ -516,6 +516,28 @@ button.secondary:hover {
   color: var(--accent);
 }
 
+.result-best-badges {
+  margin-left: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.result-best-badge {
+  font-family: var(--mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.32);
+  color: #4ade80;
+  white-space: nowrap;
+}
+
 .result-score-wrap {
   margin-left: 28px;
   display: flex;
