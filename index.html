@@ -917,11 +917,10 @@
     }
 
     function formatCutOffHistoryLabel(row) {
-      const parts = [];
-      if (row.Corte_2025 != null) parts.push(`${row.Corte_2025} (2025)`);
-      if (row.Corte_2024 != null) parts.push(`${row.Corte_2024} (2024)`);
-      if (row.Corte_2023 != null) parts.push(`${row.Corte_2023} (2023)`);
-      return parts.length > 0 ? parts.join(' / ') : 'N/A';
+      if (row.Corte_2025 != null) return String(row.Corte_2025);
+      if (row.Corte_2024 != null) return `${row.Corte_2024} (2024)`;
+      if (row.Corte_2023 != null) return `${row.Corte_2023} (2023)`;
+      return 'N/A';
     }
 
     function renderGeneralRanking(rows) {
