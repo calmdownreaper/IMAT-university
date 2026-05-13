@@ -507,6 +507,47 @@ button.secondary:hover {
   margin-bottom: 2px;
   font-size: 14px;
   font-weight: 400;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.uni-site-link {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  color: var(--sub);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  display: none;
+}
+
+.result-card.expanded .uni-site-link,
+.rank-detail-header .uni-site-link {
+  display: inline;
+}
+
+.uni-site-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.rank-detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 16px 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+
+.rank-detail-uni-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
 }
 
 .result-score {
@@ -535,6 +576,19 @@ button.secondary:hover {
   background: rgba(74, 222, 128, 0.1);
   border: 1px solid rgba(74, 222, 128, 0.32);
   color: #4ade80;
+  white-space: nowrap;
+}
+
+.result-worst-badge {
+  font-family: var(--mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.32);
+  color: #f87171;
   white-space: nowrap;
 }
 

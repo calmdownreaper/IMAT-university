@@ -573,6 +573,33 @@
       }).join('')}</div>`;
     }
 
+    const UNI_SITES = [
+      ['bicocca',   'unimib.it'],
+      ['sapienza',  'uniroma1.it'],
+      ['bologna',   'unibo.it'],
+      ['milan',     'unimi.it'],
+      ['padova',    'unipd.it'],
+      ['pavia',     'unipv.it'],
+      ['vergata',   'uniroma2.it'],
+      ['federico',  'unina.it'],
+      ['napoli',    'unina.it'],
+      ['cagliari',  'unica.it'],
+      ['catania',   'unict.it'],
+      ['parma',     'unipr.it'],
+      ['messina',   'unime.it'],
+      ['bari',      'uniba.it'],
+      ['marche',    'univpm.it'],
+      ['campania',  'unicampania.it'],
+    ];
+
+    function getUniSite(nome) {
+      const lower = (nome || '').toLowerCase();
+      for (const [kw, domain] of UNI_SITES) {
+        if (lower.includes(kw)) return domain;
+      }
+      return null;
+    }
+
     function generateInsights(uni, allData) {
       const insights = [];
       const others = allData.filter(r => r.nome !== uni.nome);
@@ -722,14 +749,7 @@
       const top5 = scored.sort((a, b) => b.finalScore - a.finalScore).slice(0, 5);
 
       // Best-in-group badges
-      const top5Badges = (() => {
-        const cats = [
-          { key: 'scoreQualidade', label: 'Maior Prestígio',         higher: true },
-          { key: 'COL_raw',        label: 'Menor Custo',            higher: false },
-          { key: 'QOL_raw',        label: 'Melhor Qualidade de Vida', higher: true },
-          { key: 'notaCorteValor', label: 'Menor Corte',      higher: false },
-          { key: 'vagasNonEu',     label: 'Mais Vagas',       higher: true },
-        ];
+      const buildBadgeMap = (cats) => {
         const map = new Map(top5.map(u => [u.nome, []]));
         cats.forEach(({ key, label, higher }) => {
           const valid = top5.filter(u => u[key] != null && Number.isFinite(Number(u[key])));
@@ -740,7 +760,23 @@
           valid.filter(u => Number(u[key]) === best).forEach(u => map.get(u.nome)?.push(label));
         });
         return map;
-      })();
+      };
+
+      const top5Badges = buildBadgeMap([
+        { key: 'scoreQualidade', label: 'Maior Prestígio',          higher: true  },
+        { key: 'COL_raw',        label: 'Menor Custo',              higher: false },
+        { key: 'QOL_raw',        label: 'Melhor Qualidade de Vida', higher: true  },
+        { key: 'notaCorteValor', label: 'Menor Corte',              higher: false },
+        { key: 'vagasNonEu',     label: 'Mais Vagas',               higher: true  },
+      ]);
+
+      const top5WorstBadges = buildBadgeMap([
+        { key: 'scoreQualidade', label: 'Menor Prestígio',         higher: false },
+        { key: 'COL_raw',        label: 'Maior Custo',             higher: true  },
+        { key: 'QOL_raw',        label: 'Pior Qualidade de Vida',  higher: false },
+        { key: 'notaCorteValor', label: 'Maior Corte',             higher: true  },
+        { key: 'vagasNonEu',     label: 'Menos Vagas',             higher: false },
+      ]);
 
       // Pre-calculate ranks for all metrics
       const colRanks = DATA.map(r => r.custoCalc);
@@ -773,15 +809,23 @@
         const corteColor = hasCorte ? getColorTier(corteRank, corteRanks.length) : '';
 
         const uniBadges = top5Badges.get(uni.nome) || [];
+        const uniWorstBadges = top5WorstBadges.get(uni.nome) || [];
         const badgesHtml = uniBadges.length > 0
           ? `<div class="result-best-badges">${uniBadges.map(b => `<span class="result-best-badge">${b}</span>`).join('')}</div>`
+          : '';
+        const worstBadgesHtml = uniWorstBadges.length > 0
+          ? `<div class="result-best-badges">${uniWorstBadges.map(b => `<span class="result-worst-badge">${b}</span>`).join('')}</div>`
           : '';
 
         card.id = cardId;
         card.innerHTML = `
           <div class="rank-badge">${idx + 1}</div>
-          <div class="result-uni-name">${uni.nome}</div>
+          <div class="result-uni-name">
+            ${uni.nome}
+            ${(() => { const d = getUniSite(uni.nome); return d ? `<a class="uni-site-link" href="https://www.${d}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${d}</a>` : ''; })()}
+          </div>
           ${badgesHtml}
+          ${worstBadgesHtml}
           <div class="result-score-wrap">
             <div class="result-score-label">Compatibilidade</div>
             <div class="result-score ${compatClass}">${uni.compatPercent}%</div>
@@ -933,6 +977,7 @@
         detailTr.innerHTML = `
           <td colspan="6" class="rank-detail-cell">
             <div class="rank-detail-box">
+              ${(() => { const d = getUniSite(row.UNI); return d ? `<div class="rank-detail-header"><span class="rank-detail-uni-name">${row.UNI}</span><a class="uni-site-link" href="https://www.${d}" target="_blank" rel="noopener">${d}</a></div>` : `<div class="rank-detail-header"><span class="rank-detail-uni-name">${row.UNI}</span></div>`; })()}
               <div class="rank-detail-grid">
                 <div class="rank-detail-item">
                   <span class="rank-detail-label">Prestígio</span>
