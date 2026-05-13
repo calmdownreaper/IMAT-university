@@ -573,6 +573,121 @@
       }).join('')}</div>`;
     }
 
+    function generateInsights(uni, allData) {
+      const insights = [];
+      const others = allData.filter(r => r.nome !== uni.nome);
+
+      const hasQ = Number.isFinite(uni.scoreQualidade) && uni.scoreQualidade > 0;
+      const uniCutoff = (uni.notaCorteValor != null && Number.isFinite(uni.notaCorteValor)) ? uni.notaCorteValor : null;
+      const hasCost = Number.isFinite(uni.COL_raw) && uni.COL_raw > 0;
+      const hasQoL = Number.isFinite(uni.QOL_raw) && uni.QOL_raw > 0;
+
+      const QUALITY_BAND = 12;
+      const peers = hasQ ? others.filter(r =>
+        Number.isFinite(r.scoreQualidade) && Math.abs(r.scoreQualidade - uni.scoreQualidade) < QUALITY_BAND
+      ) : [];
+
+      // 1: Quality/cutoff — honest bidirectional
+      if (hasQ && uniCutoff != null) {
+        // Unfavorable: another uni is much better quality with similar/lower cutoff
+        const betterAtSameCost = others.filter(r => {
+          const rc = (r.notaCorteValor != null && Number.isFinite(r.notaCorteValor)) ? r.notaCorteValor : null;
+          if (!Number.isFinite(r.scoreQualidade) || rc == null) return false;
+          return (r.scoreQualidade - uni.scoreQualidade) > 10 && (rc - uniCutoff) <= 2.5;
+        }).sort((a, b) => (b.scoreQualidade - uni.scoreQualidade) - (a.scoreQualidade - uni.scoreQualidade));
+
+        if (betterAtSameCost.length > 0) {
+          const ex = betterAtSameCost[0]; // most superior quality
+          const exCutoff = ex.notaCorteValor;
+          const verb = exCutoff <= uniCutoff ? 'corte menor' : 'corte similar';
+          insights.push({ type: 'warning', text: `${ex.nome} tem qualidade muito superior, com ${verb} (${exCutoff.toFixed(1)} vs ${uniCutoff.toFixed(1)})` });
+        } else {
+          // Favorable: this uni is much better than another at same/lower cutoff
+          const worseAtSameCost = others.filter(r => {
+            const rc = (r.notaCorteValor != null && Number.isFinite(r.notaCorteValor)) ? r.notaCorteValor : null;
+            if (!Number.isFinite(r.scoreQualidade) || rc == null) return false;
+            return (uni.scoreQualidade - r.scoreQualidade) > 10 && (uniCutoff - rc) <= 2.5;
+          }).sort((a, b) => (uni.scoreQualidade - b.scoreQualidade) - (uni.scoreQualidade - a.scoreQualidade));
+          if (worseAtSameCost.length > 0) {
+            const ex = worseAtSameCost[0]; // largest quality advantage
+            const exCutoff = ex.notaCorteValor;
+            const verb = uniCutoff <= exCutoff ? 'corte menor' : 'corte similar';
+            insights.push({ type: 'quality', text: `Qualidade muito superior a ${ex.nome}, com ${verb} (${uniCutoff.toFixed(1)} vs ${exCutoff.toFixed(1)})` });
+          }
+        }
+      }
+
+      // 2: Cost vs quality peers — honest
+      if (hasQ && hasCost && peers.length > 0) {
+        const cheaperPeers = peers.filter(r => Number.isFinite(r.COL_raw) && r.COL_raw > 0 && r.COL_raw < uni.COL_raw * 0.88);
+        const expensivePeers = peers.filter(r => Number.isFinite(r.COL_raw) && r.COL_raw > 0 && uni.COL_raw < r.COL_raw * 0.88);
+        if (cheaperPeers.length > 0) {
+          const ex = cheaperPeers.sort((a, b) => a.COL_raw - b.COL_raw)[0];
+          const pct = Math.round((1 - ex.COL_raw / uni.COL_raw) * 100);
+          insights.push({ type: 'warning', text: `${ex.nome} tem qualidade similar com custo ${pct}% menor` });
+        } else if (expensivePeers.length >= 2) {
+          const maxCost = Math.max(...expensivePeers.map(r => r.COL_raw));
+          const pct = Math.round((1 - uni.COL_raw / maxCost) * 100);
+          insights.push({ type: 'cost', text: `Custo de vida até ${pct}% menor que universidades de qualidade similar` });
+        } else if (expensivePeers.length === 1) {
+          insights.push({ type: 'cost', text: `Custo de vida menor que ${expensivePeers[0].nome}, com qualidade equivalente` });
+        }
+      }
+
+      // 3: QoL vs quality peers — honest, only among cost-comparable unis
+      if (hasQ && hasQoL && hasCost && peers.length > 0) {
+        const costComparablePeers = peers.filter(r =>
+          Number.isFinite(r.COL_raw) && r.COL_raw > 0 &&
+          Math.abs(r.COL_raw - uni.COL_raw) / Math.max(uni.COL_raw, r.COL_raw) <= 0.18
+        );
+        const betterQoLPeers = costComparablePeers.filter(r => Number.isFinite(r.QOL_raw) && r.QOL_raw > 0 && r.QOL_raw > uni.QOL_raw * 1.08);
+        const worseQoLPeers = costComparablePeers.filter(r => Number.isFinite(r.QOL_raw) && r.QOL_raw > 0 && uni.QOL_raw > r.QOL_raw * 1.08);
+        if (betterQoLPeers.length >= 2) {
+          insights.push({ type: 'warning', text: `Qualidade de vida abaixo da maioria das universidades de prestígio similar` });
+        } else if (betterQoLPeers.length === 1) {
+          insights.push({ type: 'warning', text: `${betterQoLPeers[0].nome} tem qualidade similar com melhor qualidade de vida` });
+        } else if (worseQoLPeers.length >= 2) {
+          insights.push({ type: 'qol', text: `Qualidade de vida superior à maioria das universidades de prestígio similar` });
+        } else if (worseQoLPeers.length === 1) {
+          insights.push({ type: 'qol', text: `Qualidade de vida superior a ${worseQoLPeers[0].nome}, com qualidade acadêmica equivalente` });
+        }
+      }
+
+      // 4: Entry accessibility within quality tier (fill slot if under 3)
+      if (hasQ && uniCutoff != null && peers.length >= 3 && insights.length < 3) {
+        const peersWithCut = peers.filter(r => r.notaCorteValor != null && Number.isFinite(r.notaCorteValor));
+        if (peersWithCut.length >= 2) {
+          const sorted = peersWithCut.map(r => r.notaCorteValor).sort((a, b) => a - b);
+          const median = sorted[Math.floor(sorted.length / 2)];
+          if (uniCutoff < median - 3) {
+            insights.push({ type: 'entry', text: `Corte abaixo da mediana do seu grupo de prestígio — entrada mais acessível` });
+          }
+        }
+      }
+
+      // 5: Seats advantage (fill slot if under 3)
+      if (hasQ && Number.isFinite(uni.vagasNonEu) && uni.vagasNonEu > 0 && peers.length > 0 && insights.length < 3) {
+        const fewerSeats = peers.filter(r => Number.isFinite(r.vagasNonEu) && uni.vagasNonEu > r.vagasNonEu * 1.4);
+        if (fewerSeats.length >= 2) {
+          insights.push({ type: 'seats', text: `Mais vagas Non-EU que a maioria das universidades de prestígio similar` });
+        }
+      }
+
+      return insights.slice(0, 3);
+    }
+
+    function buildInsightsHtml(insights) {
+      if (insights.length === 0) return '';
+      const iconMap = { quality: '◆', cost: '◈', qol: '◉', entry: '◎', seats: '◇', warning: '▲' };
+      return `<div class="insight-section">
+        <div class="insight-label">Insights Estratégicos</div>
+        ${insights.map(ins => `<div class="insight-chip insight-chip--${ins.type}">
+          <span class="insight-icon">${iconMap[ins.type]}</span>
+          <span class="insight-text">${ins.text}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+
     function toggleResultCard(card) {
       const willExpand = !card.classList.contains('expanded');
       document.querySelectorAll('.result-card.expanded').forEach((openCard) => {
@@ -673,6 +788,9 @@
                 { year: '2025', value: uni.Non_EU_Seats_2025 ?? uni.vagasNonEu ?? null }
               ])}
             </div>
+          </div>
+          <div class="result-insights">
+            ${buildInsightsHtml(generateInsights(uni, DATA))}
           </div>
         `;
 
@@ -818,6 +936,7 @@
                   ])}
                 </div>
               </div>
+              ${buildInsightsHtml(generateInsights(row, DATA))}
             </div>
           </td>
         `;

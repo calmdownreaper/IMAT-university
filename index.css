@@ -253,7 +253,7 @@ h1 {
 }
 
 .rank-expanded-row.show .rank-detail-box {
-  max-height: 520px;
+  max-height: 680px;
   opacity: 1;
   transform: translateY(0) scaleY(1);
   pointer-events: auto;
@@ -559,7 +559,7 @@ button.secondary:hover {
 }
 
 .result-card.expanded .result-details {
-  max-height: 180px;
+  max-height: 280px;
   margin-top: 10px;
   opacity: 1;
 }
@@ -673,6 +673,78 @@ button.secondary:hover {
 
 .detail-value.red {
   color: #ef4444;
+}
+
+/* ─── Result insights expand wrapper ───────────────────────── */
+.result-insights {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.35s ease-out;
+}
+
+.result-card.expanded .result-insights {
+  max-height: 300px;
+  opacity: 1;
+}
+
+/* ─── Insights ──────────────────────────────────────────────── */
+.insight-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.insight-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sub2);
+  margin-bottom: 2px;
+}
+
+.insight-chip {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.insight-chip--quality { border-left-color: rgba(255, 95, 95, 0.55); }
+.insight-chip--cost    { border-left-color: rgba(74, 222, 128, 0.55); }
+.insight-chip--qol     { border-left-color: rgba(138, 180, 248, 0.55); }
+.insight-chip--entry   { border-left-color: rgba(250, 204, 21, 0.55); }
+.insight-chip--seats   { border-left-color: rgba(196, 160, 240, 0.55); }
+.insight-chip--warning { border-left-color: rgba(255, 170, 50, 0.7); background: rgba(255, 150, 30, 0.05); }
+
+.insight-icon {
+  font-size: 9px;
+  color: var(--sub);
+  flex-shrink: 0;
+  margin-top: 2px;
+  line-height: 1;
+}
+
+.insight-chip--quality .insight-icon { color: rgba(255, 95, 95, 0.8); }
+.insight-chip--cost    .insight-icon { color: rgba(74, 222, 128, 0.8); }
+.insight-chip--qol     .insight-icon { color: rgba(138, 180, 248, 0.8); }
+.insight-chip--entry   .insight-icon { color: rgba(250, 204, 21, 0.8); }
+.insight-chip--seats   .insight-icon { color: rgba(196, 160, 240, 0.8); }
+.insight-chip--warning .insight-icon { color: rgba(255, 170, 50, 0.9); }
+
+.insight-text {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #c8c8c8;
+  line-height: 1.5;
 }
 
 /* ─── Bottom nav ──────────────────────────────────────────── */
