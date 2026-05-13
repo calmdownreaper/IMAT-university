@@ -712,7 +712,27 @@
           <span class="insight-icon">${iconMap[ins.type]}</span>
           <span class="insight-text">${ins.text}</span>
         </div>`).join('')}
-      </div>`;
+        </div>`;
+    }
+
+    function flashUniSiteLink(scope) {
+      if (!scope) return;
+
+      const link = scope.querySelector('.uni-site-link');
+      if (!link) return;
+
+      link.classList.remove('uni-site-link--flash');
+      if (link.flashCleanupTimerId) {
+        clearTimeout(link.flashCleanupTimerId);
+      }
+
+      void link.offsetWidth;
+      link.classList.add('uni-site-link--flash');
+
+      link.flashCleanupTimerId = setTimeout(() => {
+        link.classList.remove('uni-site-link--flash');
+        delete link.flashCleanupTimerId;
+      }, 2000);
     }
 
     function toggleResultCard(card) {
@@ -721,6 +741,9 @@
         if (openCard !== card) openCard.classList.remove('expanded');
       });
       card.classList.toggle('expanded', willExpand);
+      if (willExpand) {
+        flashUniSiteLink(card);
+      }
     }
 
     function showResults() {
@@ -1025,6 +1048,9 @@
         if (row !== detailRow) row.classList.remove('show');
       });
       detailRow.classList.toggle('show', willOpen);
+      if (willOpen) {
+        flashUniSiteLink(detailRow);
+      }
     }
 
     function sortGeneralRanking(column, isNumeric = false) {

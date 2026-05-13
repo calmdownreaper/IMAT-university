@@ -535,6 +535,35 @@ button.secondary:hover {
   border-bottom-color: var(--accent);
 }
 
+.uni-site-link.uni-site-link--flash {
+  animation: uniSiteLinkBlink 2000ms ease-in-out 1;
+}
+
+@keyframes uniSiteLinkBlink {
+  0% {
+    color: var(--sub);
+    border-bottom-color: transparent;
+    text-shadow: none;
+  }
+  20%,
+  50% {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    text-shadow: 0 0 8px rgba(255, 95, 95, 0.35);
+  }
+  35%,
+  65% {
+    color: var(--sub);
+    border-bottom-color: transparent;
+    text-shadow: none;
+  }
+  100% {
+    color: var(--sub);
+    border-bottom-color: transparent;
+    text-shadow: none;
+  }
+}
+
 .rank-detail-header {
   display: flex;
   align-items: baseline;
@@ -564,6 +593,26 @@ button.secondary:hover {
   gap: 4px;
   margin-top: 2px;
   margin-bottom: 2px;
+  max-height: 44px;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transform-origin: top left;
+  transition:
+    opacity 220ms ease-out,
+    transform 260ms ease-out,
+    max-height 260ms ease-out,
+    margin-top 220ms ease-out,
+    margin-bottom 220ms ease-out;
+}
+
+.result-card.expanded .result-best-badges {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
 }
 
 .result-best-badge {
