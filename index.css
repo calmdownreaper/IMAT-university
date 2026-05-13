@@ -253,7 +253,7 @@ h1 {
 }
 
 .rank-expanded-row.show .rank-detail-box {
-  max-height: 360px;
+  max-height: 520px;
   opacity: 1;
   transform: translateY(0) scaleY(1);
   pointer-events: auto;
@@ -274,6 +274,13 @@ h1 {
   padding: 10px 12px;
   background: var(--surface);
   min-height: 44px;
+}
+
+.rank-detail-item--history {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: auto;
 }
 
 .rank-detail-label {
@@ -546,19 +553,15 @@ button.secondary:hover {
   background: var(--line);
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.35s ease-out, margin-top 0.35s ease-out, opacity 0.35s ease-out;
+  transition: max-height 0.45s ease-out, margin-top 0.45s ease-out, opacity 0.35s ease-out;
   margin-top: 0;
   opacity: 0;
 }
 
 .result-card.expanded .result-details {
-  max-height: 160px;
+  max-height: 180px;
   margin-top: 10px;
   opacity: 1;
-}
-
-.result-card {
-  cursor: pointer;
 }
 
 .detail-item {
@@ -567,6 +570,79 @@ button.secondary:hover {
   gap: 3px;
   padding: 8px 10px;
   background: #0a0a0a;
+}
+
+.detail-item--history {
+  gap: 6px;
+}
+
+.detail-rank-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--sub);
+}
+
+.detail-rank-badge.green { color: #4ade80; border-color: rgba(74, 222, 128, 0.28); }
+.detail-rank-badge.yellow { color: #facc15; border-color: rgba(250, 204, 21, 0.28); }
+.detail-rank-badge.orange { color: #f59e0b; border-color: rgba(245, 158, 11, 0.28); }
+.detail-rank-badge.red { color: #ef4444; border-color: rgba(239, 68, 68, 0.28); }
+
+/* ─── Historical data year grid ────────────────────────────── */
+.hist-grid {
+  display: flex;
+  gap: 5px;
+}
+
+.hist-year {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 2px;
+  min-width: 44px;
+  opacity: 0.35;
+}
+
+.hist-year--present {
+  opacity: 1;
+}
+
+.hist-year--latest {
+  opacity: 1;
+  border-color: rgba(255, 95, 95, 0.4);
+  background: rgba(255, 95, 95, 0.06);
+}
+
+.hist-yr-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--sub2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hist-yr-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1;
+}
+
+.hist-yr-val--missing {
+  font-size: 11px;
+  color: var(--sub2);
+  font-weight: 400;
 }
 
 .detail-label {
@@ -660,6 +736,7 @@ button.secondary:hover {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
 
 @media (max-width: 520px) {
   body { padding: 28px 12px 96px; }

@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="index.css">
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
   <header>
@@ -109,7 +108,6 @@
     let currentMainView = 'selector';
     let generalRankingSort = { column: 'SCORE_Q', ascending: false };
     const SHEETS_API_URL = 'https://docs.google.com/spreadsheets/d/1X0wda4s0XcHJKwgHzAcJytlRZny-rCw1YKPrYwDBpZM/gviz/tq?tqx=out:json';
-    const LOCAL_CSV_URL = 'imat_uni.csv';
     const FETCH_TIMEOUT_MS = 12000;
 
     function parseNumber(value, fallback = 0) {
@@ -179,6 +177,17 @@
       return null;
     }
 
+    function pickFirstRawValue(row, keys) {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+        const value = row[key];
+        if (value == null) continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        return value;
+      }
+      return null;
+    }
+
     function validateDatasetOrThrow(data, sourceLabel) {
       if (!Array.isArray(data) || data.length < 10) {
         throw new Error(`${sourceLabel}: dataset insuficiente`);
@@ -238,14 +247,25 @@
           const nome = String(uni['Instituição']).trim();
           const calcData = bottomByName.get(nome);
 
-          let notaCorte = uni['Non-EU Cut-off (2025)'];
-          if (notaCorte === null || notaCorte === undefined) {
-            notaCorte = uni['Non-EU Cut-off (2023)'];
-          }
-
-          const notaCorteValor = toNullableMetric(notaCorte);
+          const cutOff2025Raw = pickFirstRawValue(uni, ['Non-EU Cut-off (2025)']);
+          const cutOff2024Raw = pickFirstRawValue(uni, ['Non-EU Cut-off (2024)']);
+          const cutOff2023Raw = pickFirstRawValue(uni, ['Non-EU Cut-off (2023)']);
+          const cutOffCompositeRaw = pickFirstRawValue(uni, ['C/O', 'Corte Final']);
+          const cutOff2025 = toNullableMetric(cutOff2025Raw);
+          const cutOff2024 = toNullableMetric(cutOff2024Raw);
+          const cutOff2023 = toNullableMetric(cutOff2023Raw);
+          const cutOffComposite = toNullableMetric(cutOffCompositeRaw);
+          const notaCorteValor = cutOff2025 ?? cutOff2024 ?? cutOff2023;
           const notaCorteFinal = notaCorteValor == null ? 'N/A' : notaCorteValor;
-          const vagasNonEu = Math.round(toMetricNumber(uni['Non-EU Seats'], 0));
+          const seats2025Raw = pickFirstRawValue(uni, ['Non-EU Seats (2025)', 'Non-EU Seats 2025', 'Non-EU Seats']);
+          const seats2024Raw = pickFirstRawValue(uni, ['Non-EU Seats (2024)', 'Non-EU Seats 2024']);
+          const seats2023Raw = pickFirstRawValue(uni, ['Non-EU Seats (2023)', 'Non-EU Seats 2023']);
+          const seats2025 = Math.round(toMetricNumber(seats2025Raw, 0));
+          const seats2024Parsed = toNullableMetric(seats2024Raw);
+          const seats2023Parsed = toNullableMetric(seats2023Raw);
+          const seats2024 = seats2024Parsed == null ? null : Math.round(seats2024Parsed);
+          const seats2023 = seats2023Parsed == null ? null : Math.round(seats2023Parsed);
+          const vagasNonEu = seats2025;
           const custoBase = toMetricNumber(uni['NUMBEO COL'], 0);
           const custoCalc = calcData ? toMetricNumber(calcData['NUMBEO COL'], 0) : 0;
           const qolBase = toMetricNumber(uni['LAB24 QoL'], 0);
@@ -258,9 +278,7 @@
               : (scoreQualidadeBottom ?? 0)
           );
           const qsReputacao = clampPercent(toMetricNumber(uni['QS Reputação'], 0));
-          const corteCalc = clampPercent(calcData ? toMetricNumber(calcData['Instituição'], 0) : 0);
-          const corte2025 = toNullableMetric(uni['Non-EU Cut-off (2025)']);
-          const corte2023 = toNullableMetric(uni['Non-EU Cut-off (2023)']);
+          const corteCalc = clampPercent(calcData ? toMetricNumber(calcData['Corte_calc'], 0) : 0);
 
           return {
             nome: nome || 'Desconhecida',
@@ -285,8 +303,13 @@
             COL_raw: custoBase,
             QOL_raw: qolBase,
             Non_EU_Seats: vagasNonEu,
-            Corte_2025: corte2025,
-            Corte_2023: corte2023
+            Non_EU_Seats_2025: seats2025,
+            Non_EU_Seats_2024: seats2024,
+            Non_EU_Seats_2023: seats2023,
+            Corte_2025: cutOff2025,
+            Corte_2024: cutOff2024,
+            Corte_2023: cutOff2023,
+            Corte_CO: cutOffComposite
           };
         });
 
@@ -322,42 +345,23 @@
     }
 
     async function loadDataFromSheets() {
-      const sources = [
-        { label: 'Google Visualization API', url: SHEETS_API_URL, type: 'gviz' },
-        { label: 'local CSV fallback', url: LOCAL_CSV_URL, type: 'csv' }
-      ];
-
-      let data = null;
-      let lastError = null;
-
-      for (const source of sources) {
-        try {
-          console.log(`Fetching from ${source.label}:`, source.url);
-
-          if (source.type === 'gviz') {
-            data = await fetchAndParseData(source.url);
-          } else {
-            data = await loadFromCSV(source.url);
-          }
-
-          console.log(`Data loaded from ${source.label}, ${data.length} rows`);
-          break;
-        } catch (error) {
-          lastError = error;
-          console.warn(`Failed source ${source.label}:`, error.message);
+      try {
+        console.log('Fetching from Google Visualization API:', SHEETS_API_URL);
+        const data = await fetchAndParseData(SHEETS_API_URL);
+        if (!data || data.length === 0) {
+          alert('Erro ao buscar dados (dataset vazio)');
+          return;
         }
-      }
 
-      if (!data || data.length === 0) {
-        const detail = lastError ? ` (${lastError.message})` : '';
-        alert(`Erro ao buscar dados${detail}`);
+        DATA = data;
+        renderGeneralRanking(DATA);
+        console.log('DATA loaded:', DATA.length, 'universities');
+        init();
+      } catch (error) {
+        console.warn('Failed source Google Visualization API:', error.message);
+        alert(`Erro ao buscar dados (${error.message})`);
         return;
       }
-
-      DATA = data;
-      renderGeneralRanking(DATA);
-      console.log('DATA loaded:', DATA.length, 'universities');
-      init();
     }
 
     async function fetchAndParseData(url) {
@@ -389,27 +393,6 @@
         console.error('Erro crítico no parsing dos dados:', error);
         throw error;
       }
-    }
-
-    async function loadFromCSV(url) {
-      const csv = await fetchCsv(url);
-
-      return new Promise((resolve, reject) => {
-        Papa.parse(csv, {
-          header: true,
-          skipEmptyLines: 'greedy',
-          transform: (value) => typeof value === 'string' ? value.trim() : value,
-          complete: (results) => {
-            try {
-              const data = buildFinalDataFromRows(results.data, 'csv');
-              resolve(data);
-            } catch (error) {
-              reject(error);
-            }
-          },
-          error: (error) => reject(error)
-        });
-      });
     }
 
     const WEIGHTS = [0.40, 0.30, 0.20, 0.10];
@@ -578,6 +561,26 @@
       return 'red';
     }
 
+    function buildHistGrid(entries) {
+      const latestYear = entries.reduce((best, e) => (e.value != null ? e.year : best), null);
+      return `<div class="hist-grid">${entries.map(e => {
+        const missing = e.value == null;
+        const isLatest = e.year === latestYear;
+        const cls = missing ? 'hist-year hist-year--missing' : (isLatest ? 'hist-year hist-year--latest' : 'hist-year hist-year--present');
+        const valStr = missing ? '—' : (Number.isInteger(e.value) ? String(e.value) : e.value.toFixed(1));
+        const valCls = missing ? 'hist-yr-val hist-yr-val--missing' : 'hist-yr-val';
+        return `<div class="${cls}"><span class="hist-yr-label">${e.year}</span><span class="${valCls}">${valStr}</span></div>`;
+      }).join('')}</div>`;
+    }
+
+    function toggleResultCard(card) {
+      const willExpand = !card.classList.contains('expanded');
+      document.querySelectorAll('.result-card.expanded').forEach((openCard) => {
+        if (openCard !== card) openCard.classList.remove('expanded');
+      });
+      card.classList.toggle('expanded', willExpand);
+    }
+
     function showResults() {
       if (priority.length < 4) {
         alert('Please rank all 4 dimensions');
@@ -654,18 +657,26 @@
               <span class="detail-label">Qualidade de Vida</span>
               <span class="detail-value ${qolColor}">${qolCategory} | #${qolRank}</span>
             </div>
-            <div class="detail-item">
-              <span class="detail-label">Nota de Corte</span>
-              <span class="detail-value ${corteColor}">${hasCorte ? `${uni.notaCorte} | #${corteRank}` : 'N/A'}</span>
+            <div class="detail-item detail-item--history">
+              <span class="detail-label">Nota de Corte${hasCorte ? ` <span class="detail-rank-badge ${corteColor}">#${corteRank}</span>` : ''}</span>
+              ${buildHistGrid([
+                { year: '2023', value: uni.Corte_2023 ?? null },
+                { year: '2024', value: uni.Corte_2024 ?? null },
+                { year: '2025', value: uni.Corte_2025 ?? null }
+              ])}
             </div>
-            <div class="detail-item">
+            <div class="detail-item detail-item--history">
               <span class="detail-label">Vagas Non-EU</span>
-              <span class="detail-value">${uni.vagasNonEu}</span>
+              ${buildHistGrid([
+                { year: '2023', value: uni.Non_EU_Seats_2023 ?? null },
+                { year: '2024', value: uni.Non_EU_Seats_2024 ?? null },
+                { year: '2025', value: uni.Non_EU_Seats_2025 ?? uni.vagasNonEu ?? null }
+              ])}
             </div>
           </div>
         `;
 
-        card.onclick = () => card.classList.toggle('expanded');
+        card.onclick = () => toggleResultCard(card);
         container.appendChild(card);
       });
 
@@ -689,6 +700,18 @@
       return 'red';
     }
 
+    function getResolvedCutOff(row) {
+      return row.Corte_2025 ?? row.Corte_2024 ?? row.Corte_2023;
+    }
+
+    function formatCutOffHistoryLabel(row) {
+      const parts = [];
+      if (row.Corte_2025 != null) parts.push(`${row.Corte_2025} (2025)`);
+      if (row.Corte_2024 != null) parts.push(`${row.Corte_2024} (2024)`);
+      if (row.Corte_2023 != null) parts.push(`${row.Corte_2023} (2023)`);
+      return parts.length > 0 ? parts.join(' / ') : 'N/A';
+    }
+
     function renderGeneralRanking(rows) {
       if (!Array.isArray(rows) || rows.length === 0) return;
       const sorted = [...rows].sort((a, b) => b.SCORE_Q - a.SCORE_Q);
@@ -705,7 +728,7 @@
       const colRanks = DATA.map(r => r.COL_raw);
       const qolRanks = DATA.map(r => r.QOL_raw);
       const scoreRanks = DATA.map(r => r.SCORE_Q);
-      const corteRanks = DATA.map(r => r.Corte_2025 ?? r.Corte_2023).filter(v => v != null);
+      const corteRanks = DATA.map(r => getResolvedCutOff(r)).filter(v => v != null);
       const scoreValues = DATA.map(r => r.SCORE_Q).filter(v => Number.isFinite(v));
       const costValues = DATA.map(r => r.COL_raw).filter(v => Number.isFinite(v));
 
@@ -722,7 +745,7 @@
         const colRank = getCostRank(row.COL_raw, colRanks);
         const qolRank = getRank(row.QOL_raw, qolRanks, true);
         const scoreRank = getRank(row.SCORE_Q, scoreRanks, true);
-        const corteVal = row.Corte_2025 ?? row.Corte_2023;
+        const corteVal = getResolvedCutOff(row);
         const hasCorte = corteVal != null && Number.isFinite(corteVal);
         const corteRank = hasCorte ? getRank(corteVal, corteRanks, false) : null;
 
@@ -744,9 +767,7 @@
         const tr = document.createElement('tr');
         tr.className = 'rank-row';
         tr.onclick = () => toggleGeneralRankingDetail(detailId);
-        const corteMainText = row.Corte_2025 != null
-          ? `${row.Corte_2025} (2025)`
-          : (row.Corte_2023 != null ? `${row.Corte_2023} (2023)` : 'N/A');
+        const corteMainText = formatCutOffHistoryLabel(row);
         const corteMainWithRank = hasCorte
           ? `${corteMainText} | #${corteRank}`
           : 'N/A';
@@ -780,13 +801,21 @@
                   <span class="rank-detail-label">Qualidade de Vida</span>
                   <span class="rank-detail-value ${qolColor}">${qolCategory} | #${qolRank}</span>
                 </div>
-                <div class="rank-detail-item">
-                  <span class="rank-detail-label">Nota de Corte</span>
-                  <span class="rank-detail-value ${corteColor}">${hasCorte ? `${row.Corte_2025 != null ? row.Corte_2025 + ' (2025)' : ''}${row.Corte_2025 != null && row.Corte_2023 != null ? ' / ' : ''}${row.Corte_2023 != null ? row.Corte_2023 + ' (2023)' : ''} | #${corteRank}` : 'N/A'}</span>
+                <div class="rank-detail-item rank-detail-item--history">
+                  <span class="rank-detail-label">Nota de Corte${hasCorte ? ` <span class="detail-rank-badge ${corteColor}">#${corteRank}</span>` : ''}</span>
+                  ${buildHistGrid([
+                    { year: '2023', value: row.Corte_2023 ?? null },
+                    { year: '2024', value: row.Corte_2024 ?? null },
+                    { year: '2025', value: row.Corte_2025 ?? null }
+                  ])}
                 </div>
-                <div class="rank-detail-item">
+                <div class="rank-detail-item rank-detail-item--history">
                   <span class="rank-detail-label">Vagas Non-EU</span>
-                  <span class="rank-detail-value">${row.Non_EU_Seats}</span>
+                  ${buildHistGrid([
+                    { year: '2023', value: row.Non_EU_Seats_2023 ?? null },
+                    { year: '2024', value: row.Non_EU_Seats_2024 ?? null },
+                    { year: '2025', value: row.Non_EU_Seats_2025 ?? row.Non_EU_Seats ?? null }
+                  ])}
                 </div>
               </div>
             </div>
@@ -816,8 +845,8 @@
       }
 
       const sorted = [...DATA].sort((a, b) => {
-        const aVal = column === 'Corte_real' ? (a.Corte_2025 ?? a.Corte_2023) : a[column];
-        const bVal = column === 'Corte_real' ? (b.Corte_2025 ?? b.Corte_2023) : b[column];
+        const aVal = column === 'Corte_real' ? getResolvedCutOff(a) : a[column];
+        const bVal = column === 'Corte_real' ? getResolvedCutOff(b) : b[column];
 
         if (isNumeric) {
           const aNum = Number(aVal);
