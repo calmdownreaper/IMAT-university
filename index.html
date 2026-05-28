@@ -459,27 +459,74 @@
       }
     }
 
-    function ensureCorteCalcPopulated(data) {
+    function zScoreToPercent(value, mean, stdDev) {
+      if (!Number.isFinite(value) || !Number.isFinite(mean) || !Number.isFinite(stdDev)) return 0;
+      if (stdDev === 0) return 50;
+      const z = (value - mean) / stdDev;
+      const normalized = 50 + z * 15.87;
+      return clampPercent(normalized);
+    }
+
+    function normalizeToZScores(data) {
+      if (!Array.isArray(data) || data.length === 0) return;
+
+      // SCORE_Q: higher = better
+      const scoreQValues = data.map(r => r.scoreQualidade).filter(v => Number.isFinite(v));
+      if (scoreQValues.length > 0) {
+        const mean = scoreQValues.reduce((a, b) => a + b, 0) / scoreQValues.length;
+        const variance = scoreQValues.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / scoreQValues.length;
+        const stdDev = Math.sqrt(variance);
+        data.forEach(row => {
+          if (Number.isFinite(row.scoreQualidade)) {
+            row.SCORE_Q = zScoreToPercent(row.scoreQualidade, mean, stdDev);
+          }
+        });
+      }
+
+      // COL_calc: higher = better (cheaper)
+      const costValues = data.map(r => r.custoCalc).filter(v => Number.isFinite(v));
+      if (costValues.length > 0) {
+        const mean = costValues.reduce((a, b) => a + b, 0) / costValues.length;
+        const variance = costValues.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / costValues.length;
+        const stdDev = Math.sqrt(variance);
+        data.forEach(row => {
+          if (Number.isFinite(row.custoCalc)) {
+            row.COL_calc = zScoreToPercent(row.custoCalc, mean, stdDev);
+          }
+        });
+      }
+
+      // QOL_calc: higher = better
+      const qolValues = data.map(r => r.qolCalc).filter(v => Number.isFinite(v));
+      if (qolValues.length > 0) {
+        const mean = qolValues.reduce((a, b) => a + b, 0) / qolValues.length;
+        const variance = qolValues.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / qolValues.length;
+        const stdDev = Math.sqrt(variance);
+        data.forEach(row => {
+          if (Number.isFinite(row.qolCalc)) {
+            row.QOL_calc = zScoreToPercent(row.qolCalc, mean, stdDev);
+          }
+        });
+      }
+
+      // Corte: lower = better (invert z-score)
       const corteValues = data
         .map(r => r.notaCorteValor)
         .filter(v => Number.isFinite(v));
-
-      if (corteValues.length === 0) return;
-
-      const corteMin = Math.min(...corteValues);
-      const corteMax = Math.max(...corteValues);
-      const corteRange = corteMax - corteMin;
-
-      data.forEach(row => {
-        if (!Number.isFinite(row.corteCalc) || row.corteCalc === 0) {
+      if (corteValues.length > 0) {
+        const mean = corteValues.reduce((a, b) => a + b, 0) / corteValues.length;
+        const variance = corteValues.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / corteValues.length;
+        const stdDev = Math.sqrt(variance);
+        data.forEach(row => {
           if (Number.isFinite(row.notaCorteValor)) {
-            const corteScore = corteRange < 1e-9
-              ? 50
-              : ((corteMax - row.notaCorteValor) / corteRange) * 100;
-            row.corteCalc = clampPercent(corteScore);
+            const z = (row.notaCorteValor - mean) / stdDev;
+            const normalized = 50 - z * 15.87;
+            row.corteCalc = clampPercent(normalized);
+          } else {
+            row.corteCalc = 0;
           }
-        }
-      });
+        });
+      }
     }
 
     async function loadDataFromSheets() {
@@ -492,7 +539,7 @@
         }
 
         DATA = data;
-        ensureCorteCalcPopulated(DATA);
+        normalizeToZScores(DATA);
         console.log('DATA sample:', DATA[0]);
         renderGeneralRanking(DATA);
         console.log('DATA loaded:', DATA.length, 'universities');
@@ -648,9 +695,9 @@
       if (priority.length < 4) return 0;
 
       const dims = {
-        SCORE_Q: row.scoreQualidade,
-        COL_calc: row.custoCalc,
-        QOL_calc: row.qolCalc,
+        SCORE_Q: row.SCORE_Q,
+        COL_calc: row.COL_calc,
+        QOL_calc: row.QOL_calc,
         entry: row.corteCalc
       };
 
