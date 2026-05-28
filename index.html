@@ -177,6 +177,26 @@
       return null;
     }
 
+    function parseSeatCount(value) {
+      if (value == null) return 0;
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+      }
+
+      const raw = String(value).trim();
+      if (!raw) return 0;
+
+      // Handles formats like "35 (+5)" by summing confirmed + extra seats.
+      const compositeMatch = raw.match(/(-?\d+(?:[.,]\d+)?)\s*\(\s*\+?\s*(-?\d+(?:[.,]\d+)?)\s*\)/);
+      if (compositeMatch) {
+        const base = parseNumber(compositeMatch[1], 0);
+        const extra = parseNumber(compositeMatch[2], 0);
+        return Math.max(0, Math.round(base + extra));
+      }
+
+      return Math.max(0, Math.round(parseNumber(raw, 0)));
+    }
+
     function pickFirstRawValue(row, keys) {
       for (const key of keys) {
         if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
@@ -223,19 +243,109 @@
       });
     }
 
+    function normalizeDataFromCalcSchema(rows) {
+      const normalizedRows = rows
+        .filter((row) => isValidUniName(String(row.UNI ?? '')))
+        .map((row) => {
+          const nome = String(row.UNI).trim();
+          const cutOff2025 = toNullableMetric(row.Corte_2025);
+          const cutOff2024 = toNullableMetric(row.Corte_2024);
+          const cutOff2023 = toNullableMetric(row.Corte_2023);
+          const cutOffComposite = toNullableMetric(row.Corte_CO ?? row['C/O'] ?? row['Corte Final']);
+          const notaCorteValor = cutOff2025 ?? cutOff2024 ?? cutOff2023;
+          const notaCorteFinal = notaCorteValor == null ? 'N/A' : notaCorteValor;
+
+          const seats2025 = Math.round(toMetricNumber(row.Non_EU_Seats_2025 ?? row.Non_EU_Seats, 0));
+          const seats2024Parsed = toNullableMetric(row.Non_EU_Seats_2024);
+          const seats2023Parsed = toNullableMetric(row.Non_EU_Seats_2023);
+          const seats2024 = seats2024Parsed == null ? null : Math.round(seats2024Parsed);
+          const seats2023 = seats2023Parsed == null ? null : Math.round(seats2023Parsed);
+          const vagasNonEu = seats2025;
+
+          const custoBase = toMetricNumber(row.COL_raw, 0);
+          const custoCalc = clampPercent(toMetricNumber(row.COL_calc, 0));
+          const qolBase = toMetricNumber(row.QOL_raw, 0);
+          const qolCalc = clampPercent(toMetricNumber(row.QOL_calc, 0));
+          const scoreQualidade = clampPercent(toMetricNumber(row.SCORE_Q, 0));
+          const qsReputacao = clampPercent(toMetricNumber(row.QS_Reputacao ?? row['QS Reputação'], 0));
+          const corteCalc = clampPercent(toMetricNumber(row.Corte_calc, 0));
+          const citySizeRaw = toMetricNumber(row.city_size ?? row['city_size'], -1);
+          const citySize = citySizeRaw >= 0 && citySizeRaw <= 2 ? Math.round(citySizeRaw) : null;
+
+          return {
+            nome: nome || 'Desconhecida',
+            rankGeral: row.rankGeral ?? row['Posição'] ?? '',
+            vagasNonEu,
+            notaCorte: notaCorteFinal,
+            notaCorteValor,
+            custoBase,
+            custoCalc,
+            qolBase,
+            qolCalc,
+            scoreQualidade,
+            qsReputacao,
+            corteCalc,
+            citySize,
+
+            // aliases de compatibilidade
+            UNI: nome || 'Desconhecida',
+            SCORE_Q: scoreQualidade,
+            COL_calc: custoCalc,
+            QOL_calc: qolCalc,
+            Corte_calc: corteCalc,
+            COL_raw: custoBase,
+            QOL_raw: qolBase,
+            Non_EU_Seats: vagasNonEu,
+            Non_EU_Seats_2025: seats2025,
+            Non_EU_Seats_2024: seats2024,
+            Non_EU_Seats_2023: seats2023,
+            Corte_2025: cutOff2025,
+            Corte_2024: cutOff2024,
+            Corte_2023: cutOff2023,
+            Corte_CO: cutOffComposite
+          };
+        });
+
+      const dedup = new Map();
+      normalizedRows.forEach((row) => {
+        if (!dedup.has(row.nome)) dedup.set(row.nome, row);
+      });
+
+      return Array.from(dedup.values());
+    }
+
     function buildFinalDataFromRows(allRows, sourceLabel) {
       const splitIndex = allRows.findIndex(row => row['Posição'] === 'UNI');
 
       if (splitIndex === -1) {
-        throw new Error("Não foi possível encontrar a linha de separação 'UNI'. Verifique a estrutura do Sheet.");
+        const normalizedSchema = normalizeDataFromCalcSchema(allRows);
+        validateDatasetOrThrow(normalizedSchema, sourceLabel);
+        return normalizedSchema;
       }
 
       const topHalf = allRows.slice(0, splitIndex);
+      const splitRow = allRows[splitIndex] || {};
       const bottomHalf = allRows.slice(splitIndex + 1);
+      const calcHeaderToTopHeader = new Map();
+
+      Object.keys(splitRow).forEach((topHeader) => {
+        const calcHeader = String(splitRow[topHeader] ?? '').trim();
+        if (calcHeader) calcHeaderToTopHeader.set(calcHeader, topHeader);
+      });
+
+      const getCalcField = (row, calcHeader, fallbackTopHeaders = []) => {
+        const topHeaderForCalc = calcHeaderToTopHeader.get(calcHeader);
+        const keys = [calcHeader];
+        if (topHeaderForCalc) keys.push(topHeaderForCalc);
+        keys.push(...fallbackTopHeaders);
+        return pickFirstRawValue(row, keys);
+      };
+
+      const calcUniTopHeader = calcHeaderToTopHeader.get('UNI');
       const bottomByName = new Map();
 
       bottomHalf.forEach((calcRow) => {
-        const calcName = calcRow['Posição'];
+        const calcName = getCalcField(calcRow, 'UNI', [calcUniTopHeader, 'UNI', 'Posição']);
         if (typeof calcName === 'string' && calcName.trim()) {
           bottomByName.set(calcName.trim(), calcRow);
         }
@@ -260,25 +370,29 @@
           const seats2025Raw = pickFirstRawValue(uni, ['Non-EU Seats (2025)', 'Non-EU Seats 2025', 'Non-EU Seats']);
           const seats2024Raw = pickFirstRawValue(uni, ['Non-EU Seats (2024)', 'Non-EU Seats 2024']);
           const seats2023Raw = pickFirstRawValue(uni, ['Non-EU Seats (2023)', 'Non-EU Seats 2023']);
-          const seats2025 = Math.round(toMetricNumber(seats2025Raw, 0));
+          const seats2025 = parseSeatCount(seats2025Raw);
           const seats2024Parsed = toNullableMetric(seats2024Raw);
           const seats2023Parsed = toNullableMetric(seats2023Raw);
           const seats2024 = seats2024Parsed == null ? null : Math.round(seats2024Parsed);
           const seats2023 = seats2023Parsed == null ? null : Math.round(seats2023Parsed);
           const vagasNonEu = seats2025;
           const custoBase = toMetricNumber(uni['NUMBEO COL'], 0);
-          const custoCalc = calcData ? toMetricNumber(calcData['NUMBEO COL'], 0) : 0;
+          const custoCalc = clampPercent(toMetricNumber(calcData ? getCalcField(calcData, 'COL_calc', ['NUMBEO COL']) : null, 0));
           const qolBase = toMetricNumber(uni['LAB24 QoL'], 0);
-          const qolCalc = calcData ? toMetricNumber(calcData['LAB24 QoL'], 0) : 0;
+          const qolCalc = clampPercent(toMetricNumber(calcData ? getCalcField(calcData, 'QOL_calc', ['LAB24 QoL']) : null, 0));
           const scoreQualidadeTop = toNullableMetric(uni['Score Qualidade']);
-          const scoreQualidadeBottom = calcData ? toNullableMetric(calcData['Nature Index']) : null;
+          const scoreQualidadeBottom = calcData ? toNullableMetric(getCalcField(calcData, 'SCORE_Q', ['Nature Index'])) : null;
           const scoreQualidade = clampPercent(
-            (scoreQualidadeTop != null && scoreQualidadeTop >= 0 && scoreQualidadeTop <= 100)
-              ? scoreQualidadeTop
-              : (scoreQualidadeBottom ?? 0)
+            (scoreQualidadeBottom != null && scoreQualidadeBottom >= 0 && scoreQualidadeBottom <= 100)
+              ? scoreQualidadeBottom
+              : ((scoreQualidadeTop != null && scoreQualidadeTop >= 0 && scoreQualidadeTop <= 100)
+                ? scoreQualidadeTop
+                : 0)
           );
           const qsReputacao = clampPercent(toMetricNumber(uni['QS Reputação'], 0));
-          const corteCalc = clampPercent(calcData ? toMetricNumber(calcData['Corte_calc'], 0) : 0);
+          const corteCalc = clampPercent(toMetricNumber(calcData ? getCalcField(calcData, 'Corte_calc', ['Instituição']) : null, 0));
+          const citySizeRaw = toMetricNumber(calcData ? getCalcField(calcData, 'city_size', ['city_size']) : null, -1);
+          const citySize = citySizeRaw >= 0 && citySizeRaw <= 2 ? Math.round(citySizeRaw) : null;
 
           return {
             nome: nome || 'Desconhecida',
@@ -287,18 +401,19 @@
             notaCorte: notaCorteFinal,
             notaCorteValor,
             custoBase,
-            custoCalc: clampPercent(custoCalc),
+            custoCalc,
             qolBase,
-            qolCalc: clampPercent(qolCalc),
+            qolCalc,
             scoreQualidade,
             qsReputacao,
             corteCalc,
+            citySize,
 
             // aliases de compatibilidade
             UNI: nome || 'Desconhecida',
             SCORE_Q: scoreQualidade,
-            COL_calc: clampPercent(custoCalc),
-            QOL_calc: clampPercent(qolCalc),
+            COL_calc: custoCalc,
+            QOL_calc: qolCalc,
             Corte_calc: corteCalc,
             COL_raw: custoBase,
             QOL_raw: qolBase,
@@ -344,6 +459,29 @@
       }
     }
 
+    function ensureCorteCalcPopulated(data) {
+      const corteValues = data
+        .map(r => r.notaCorteValor)
+        .filter(v => Number.isFinite(v));
+
+      if (corteValues.length === 0) return;
+
+      const corteMin = Math.min(...corteValues);
+      const corteMax = Math.max(...corteValues);
+      const corteRange = corteMax - corteMin;
+
+      data.forEach(row => {
+        if (!Number.isFinite(row.corteCalc) || row.corteCalc === 0) {
+          if (Number.isFinite(row.notaCorteValor)) {
+            const corteScore = corteRange < 1e-9
+              ? 50
+              : ((corteMax - row.notaCorteValor) / corteRange) * 100;
+            row.corteCalc = clampPercent(corteScore);
+          }
+        }
+      });
+    }
+
     async function loadDataFromSheets() {
       try {
         console.log('Fetching from Google Visualization API:', SHEETS_API_URL);
@@ -354,6 +492,8 @@
         }
 
         DATA = data;
+        ensureCorteCalcPopulated(DATA);
+        console.log('DATA sample:', DATA[0]);
         renderGeneralRanking(DATA);
         console.log('DATA loaded:', DATA.length, 'universities');
         init();
@@ -378,6 +518,7 @@
 
         // 2. Extração de Cabeçalhos
         const headers = payload.table.cols.map(col => col.label);
+        console.log('Headers found:', headers);
 
         // 3. Flattening Forçando a propriedade 'v' (Float numérico)
         const allRows = payload.table.rows.map(row => {
@@ -510,7 +651,7 @@
         SCORE_Q: row.scoreQualidade,
         COL_calc: row.custoCalc,
         QOL_calc: row.qolCalc,
-        entry: 100 - row.corteCalc
+        entry: row.corteCalc
       };
 
       return priority.reduce((sum, key, i) => sum + WEIGHTS[i] * dims[key], 0);
@@ -538,6 +679,13 @@
       if (cost <= 35) return 'cara';
       if (cost <= 60) return 'moderada';
       return 'barata';
+    }
+
+    function getCitySizeName(size) {
+      if (size === 0) return 'Pequena';
+      if (size === 1) return 'Média';
+      if (size === 2) return 'Grande';
+      return 'Desconhecido';
     }
 
     function getCostColor(category) {
@@ -866,6 +1014,10 @@
               <span class="detail-label">Qualidade de Vida</span>
               <span class="detail-value ${qolColor}">${qolCategory} | #${qolRank}</span>
             </div>
+            ${uni.citySize != null ? `<div class="detail-item">
+              <span class="detail-label">Tamanho da Cidade</span>
+              <span class="detail-value">${getCitySizeName(uni.citySize)}</span>
+            </div>` : ''}
             <div class="detail-item detail-item--history">
               <span class="detail-label">Nota de Corte${hasCorte ? ` <span class="detail-rank-badge ${corteColor}">#${corteRank}</span>` : ''}</span>
               ${buildHistGrid([
